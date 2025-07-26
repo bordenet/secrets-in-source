@@ -1,0 +1,1111 @@
+# IMPORTANT TOOL: https://regex101.com/
+#
+# This file is getting broken out into sections so we gain the ability 
+# to fine-tune which filters are used based on the file type being scanned
+#
+# All files, regardless of type, currently have these filters applied to
+# reduce false-positives
+#
+# All of the following lines are examples for you to start with. YMMV depending on your codebase
+#
+
+#
+# package-lock.json files
+#
+\"integrity\": \"sha
+\"resolved\": \"https
+(mini|get)pass
+
+\"(trunkSid|phoneJson|voiceUrl)\":
+
+password for :
+
+\"base64\":\s*\"
+[A-Za-z0-9+\/]{120}$
+^[A-Za-z0-9+\/]{32}
+
+SECRETS\s*=\s*read_string
+SECRETS\['
+secret\s*=\s*var\.
+
+# Matches password assignment with empty quotes, e.g., pass: ''
+(PASS(WORD)?|(P|p)assword|pwd|KEY|SECRET|TOKEN):\s*''
+
+# Matches repeated password-related keywords, e.g., PASS PASSWORD
+(PASS(WORD)?|(P|p)assword|pwd|KEY|SECRET|TOKEN) (PASS(WORD)?|(P|p)assword|pwd|KEY|SECRET|TOKEN)
+
+# Matches password assignment with 'str' and optional None value, e.g., PASS: str = None
+(PASS|PASSWORD|(P|p)assword|pwd|KEY|SECRET|TOKEN): str = None
+
+# Matches password with A followed by lowercase letters, e.g., A password can be
+PASS *:\s*A\s*[a-z]+\s*can\s*be
+(P|p)assword\s*[:|=]\s*(handler|\"handler\"|password)\s*$
+password:\s*<YOUR_CHOSEN
+password=\"\.*placeholder
+
+#
+# Forms of ID
+#
+account_id:role
+
+(K|k)ey\s*=\s*\"(AvailabilityRule|msg\.key|MEMORY_KEY|API_KEY)
+(K|k)ey\s*=\s*\"(json_key|metadata\.score|Description)\"
+(K|k)ey\s*=\s*(cs\.PropertyKey|TimeZone|DepartmentAgents)\"
+(K|k)ey\s*=\s*\"api_key
+(K|k)ey\s*=\s*\"openapi_api_key
+(K|k)ey\s*=\s*\"(Utils|keystore)\.
+(K|k)ey\s*=\s*\"(keystore\.|config)
+(K|k)ey\s*=\s*\"kubernetes
+(K|k)ey\s*=\s*\"topology\.
+Key:\s*(truststore|keystore)-password
+Key:\s*key\-file
+(K|k)ey:\s.*(kubernetes|argocd)
+Key:\s(zookeeper|key\-password)
+key:\s*(tls\.key|keystore-|\"kubernetes|key-file|zookeeper\.|inter-broker|system\-user)
+key:\s*(client|kraft|controller|quorum)\-
+key:\s(api\-key$|client_)
+KEY\s*=\s*(MEMORY_KEY|API_KEY|MISTRAL_API_KEY|\(Value)
+
+KEY\s*=\s*azure_env\[
+KEY\s*=\s*_model_init\[\s*\(Value
+
+#
+# Forms of pwd: Matches password assignment with getpass, e.g., pwd = getpass.getpass
+#
+pwd\s*=\s*getpass\.getpass
+(password|pwd)\s*:\s*str\s*(N|n)one
+
+#
+# Forms of token
+#
+Token\s*=\s*(cfg\.|default\))\s*$
+
+#
+# Matches password assignment with bash-style variable, e.g., PASS="${PASSWORD}"
+#
+(PASS(WORD)?|(P|p)assword|pwd|KEY|SECRET|TOKEN)\s*:\s*\$\\s*\{
+(PASS(WORD)?|(P|p)assword|pwd|KEY|SECRET|TOKEN)\s*:\s*\"\$\\s*\{
+
+# Matches password assignment with bash-style variable and optional braces, e.g., PASS="${{PASSWORD}}"
+(PASS(WORD)?|(P|p)assword|pwd|KEY|SECRET|TOKEN)(:|=)\s*\"\${.*?}
+
+# Matches GitHub Actions syntax, e.g. REPO_PASSWORD: ${{ secrets.REPO_PASSWORD }}
+(PASS(WORD)?|(P|p)assword|pwd|KEY|SECRET|TOKEN)(:|=)\s*($\{|\{|request\.|response\.)
+_PWD\}
+
+#
+# Matches specific secret assignment, e.g., SECRET =
+#
+(^|\s)SECRET\s*=\s*
+
+#
+# Matches empty password assignment, e.g., PASS: ""
+#
+(PASS(WORD)?|(P|p)assword|pwd|KEY|SECRET|TOKEN):\s*\"\"
+
+#
+# Matches keystore password, e.g., ${KEYSTORE_PASSWORD}
+#
+\\$\{[A-Z_]{6,12}KEYSTORE_PASSWORD\}
+
+#
+# Matches password with colon and hyphen, e.g., PASS:-
+#
+(PASS(WORD)?|(P|p)assword|pwd|KEY|SECRET|TOKEN):\-
+
+# Matches password assignment with bash-style variable, e.g., PASS="${PASSWORD}"
+(PASS(WORD)?|(P|p)assword|pwd|KEY|SECRET|TOKEN).*=.*\"\\$
+
+# Matches password assignment with bash-style variable and braces, e.g., PASS="${{PASSWORD}}"
+(PASS(WORD)?|(P|p)assword|pwd|KEY|SECRET|TOKEN).*=.*\$\{\{
+
+# Matches password assignment with escaped dollar sign, e.g., PASS=\$12345
+(PASS(WORD)?|(P|p)assword|pwd|KEY|SECRET|TOKEN)=\\\$
+
+# Matches password assignment with equal sign, e.g., PASS=
+(PASS(WORD)?|(P|p)assword|pwd|KEY|SECRET|TOKEN)=$
+
+# Matches password assignment with get_pwd() function call, e.g., PASS=get_pwd()
+(PASS(WORD)?|(P|p)assword|pwd|KEY|SECRET|TOKEN)=get_pwd\(\)
+
+# Matches password assignment with os.env() function call, e.g., PASS = os.getenv('PASSWORD')
+password = os\.getenv\((\"|')[A-Z_]{4,24}(\"|')\s*^o
+(PASS|PASSWORD|Password|pwd|KEY|SECRET|secret|TOKEN) = os\.getenv\((\"|')[A-Z_]{4,24}
+
+# Matches password assignment with PASSWORD' keyword, e.g., PASSWORD'
+PASSWORD\\'
+
+# Matches password assignment with double hyphen, e.g., PASS = --
+(PASS(WORD)?|(P|p)assword|pwd|KEY|SECRET|TOKEN) = \-\-
+
+# Matches password assignment with specific self reference, e.g., PASS=self.PASSWORD
+(PASS(WORD)?|(P|p)assword|pwd|KEY|SECRET|TOKEN)=[self\\.]{0,1}[A-Z_]{4,32}_(PW|PASS)
+
+# Matches password assignment with self reference, e.g., PASS=self.PASSWORD
+(PASS(WORD)?|(P|p)assword|pwd|KEY|SECRET|TOKEN)=self\\.[A-Z_\\.]{4,64}
+
+# Matches keystore password assignment with empty value, e.g., keystore.password" ""
+keystore\.password\" \"\"
+key\s*(=|:)\s*keystore\.
+key\s*(=|:)\s*config\[
+
+# Matches specific password assignment, e.g., PASS = ServiceEnvCM
+PASS = ServiceEnvCM
+
+# Matches password assignment, e.g., password=password
+password=password
+
+# Matches password assignment with self reference, e.g., password=self.
+password=self\\.
+
+# Matches generic pass string, e.g., passhog
+passhog
+
+# Matches password assignment with HIDDEN value, e.g., PASS: HIDDEN
+(PASS(WORD)?|(P|p)assword|pwd|KEY|SECRET|TOKEN):\s*HIDDEN
+
+# Matches password assignment with VAL value, e.g., PASS=VAL
+(PASS(WORD)?|(P|p)assword|pwd|KEY|SECRET|TOKEN).*=.*VAL
+
+# Matches password assignment with closing parenthesis, e.g., pass: ")"
+\s*(pass|password)\s*\"\)
+
+# Matches password assignment with ENV variable, e.g., PASS=ENV["PASSWORD"]
+(PASS(WORD)?|(P|p)assword|pwd|KEY|SECRET|TOKEN)=ENV\[
+
+# Matches long password assignment, e.g., PASS: verylongpasswordstring
+PASS : [a-zA-Z ]{12,}
+
+# Matches password with keystore suffix, e.g., _KEYSTORE_PASSWORD
+_KEYSTORE_PASSWORD$
+
+# Matches specific password format, e.g., <AWS_PASS>
+<[A-Z]{2,6}_(PASS(WORD)?|(P|p)assword|pwd|KEY|SECRET|TOKEN)>\"
+
+# Matches JWT token validity assignment, e.g., name: INFRA_JWT_TOKEN_VALIDITY
+name:\sINFRA_JWT_TOKEN_VALIDITY
+
+# Matches password with OR keyword, e.g., PASS OR
+(PASS(WORD)?|(P|p)assword|pwd|KEY|SECRET|TOKEN) OR
+
+# Matches password with "password" keyword, e.g., .password Password
+\\.password Password
+
+# Matches assignments to shell script function arguments
+(PASS(WORD)?|(P|p)assword|pwd|KEY|SECRET|TOKEN)=\\$[0-9].{1,2}$
+
+# TOKEN=$(echo "$SECRET" | jq -r ".downloadToken")
+(PASS(WORD)?|(P|p)assword|pwd|KEY|SECRET|TOKEN)=\\$\(
+
+# --docker-password="$NEXUS_PASS"
+password=\"\$$
+
+# SECRET_NAME="$OPTARG"
+[A-Z_].{8,12}=\"\$
+
+# TOKEN=${HF_TOKEN}
+TOKEN=\$\{[A-Z_].{4,12}}
+
+# "$SECRET_PATTERN_STRICT"
+\"\$SECRET_PATTERN_
+
+password:\s*\$\{\{
+PASSWORD=\$\(
+password=\"\$
+password\}\"
+password:\s\"\)
+password=\\\"\$
+password=self\.[A-Z_].{4,8}
+
+KEY=\$\(
+
+name:\sINFRA_JWT_TOKEN_VALIDITY
+Value:\s*[A-Z_]{0,16}(PASS(WORD)?|(P|p)assword|pwd|KEY|SECRET|TOKEN)
+
+keystore-tts$
+KEYSTORE_(KEY|PORT)
+KEYSTORE_TTL
+PASS=\$\{
+PASS=\$\\{
+KEY_MAX:
+KEY_TTL:
+
+AWS_ACCESS_KEY_ID$
+AWS_SECRET_ACCESS_KEY$
+KEY_ID=(\$|\})
+SECRET=\$\{
+
+# - AZURE_ACCOUNT_KEY=${AZURE_ACCOUNT_KEY}
+_KEY=\$
+_KEY\}
+
+# - KSTORE_KEY=${VENDOR_AZURE_KEY:-xxxyyyzzz}
+VENDOR_AZURE_KEY:\-xxxyyyzzz
+
+#
+# .js Exemptions
+#
+zipfile:(\/|\/\/\/)<pwd>\/
+tokenRef:
+(PASS(WORD)?|(P|p)assword|pwd|KEY|SECRET|TOKEN): process\.env\.
+password\s*=\s*process.env.
+password:\s*(null|str|true),
+password:!0
+password\s=\sget_
+Password\s=\sasync\s\(\)\s=>\s\{
+PASS\s*:\s*[a-zA-Z\s]{6,32}
+PASSWORD: java\.lang\.System\.getenv\('
+(PASS(WORD)?|(P|p)assword|pwd|KEY|SECRET|TOKEN):\sjava\.lang\.System\.getenv\(
+(K|k)ey\s*=\s*req\.[A-Za-z]{2}
+(key|pwd|password)\s=\s(keyring\.get|hashlib\.|local\.|azurerm_)
+key\s*=\s*(\"terraform\.|\"state|\"perf-)
+
+',\s*key:\s*'
+key:\s*username
+
+test_config\.[A-Z_]{8,24} = aws_env\['[A-Z_]{8,24}'\]
+
+#
+# Common go patterns
+#
+tokenHeader:\s\"Bearer \saValue\"
+token:\s*[access_]?token
+Token:\s*\"<
+
+#
+# Common C# patterns
+#
+Key=[env|service|team]
+TOKEN=\"TOKEN_HERE\"]
+
+#
+# Common Helm chart patterns
+#
+\s*key:\s*ast\-[a-z\-]{2,48}(password|username)
+\s*key:\s*connection\s*$
+securityKey:\s*not_used
+
+#
+# Common ENV patterns
+#
+TOKEN\s*=\s*os\.
+
+#
+# Common yml/yaml patterns
+#
+^\s*aws_access_key:\s*$
+key:\s*akuity\.io\/argo\-cd
+key:\s*(enable_|aws_cluster_name)
+\-\s*key:\s*\"primary-node-group\"
+\-\s*key:\s*CriticalAddonsOnly
+ctrl_key\s*=\s*\"
+__test__Data__password:\s*example
+key:\s*(asr|mongo|fluent|translatio|tts)
+key\s*=\s*\"terraform
+key:\s*asterisk
+key=data_key
+key=functools\.
+key=StrictVersion\)
+key:\s*(otel\-|sys_)
+key\s*=\s*args\.
+key\s*=\s*CountDictionary\.
+key\s*=\s*dlg\.
+key\s*=\s*list\(
+key\s*=\s*mapping\[
+key\s*=\s*new_
+key\s*=\s*ontology_
+key\s*=\s*read_
+key\s*=\s*sent\.
+key\s*=\s*set\(
+key\s*=\s*str\(
+key\s*=\s*sys\.
+key\s*=\s*torch\.
+key\s*=\s*dlg\.
+key\s*=\s*keyring\.
+key\s*=\s*list\(
+key\s*=\s*mapping\[
+key\s*=\s*new_
+key\s*=\s*ontology_
+key\s*=\s*read_
+key\s*=\s*sent\.
+key\s*=\s*set\(
+key\s*=\s*torch\.
+key:\s*'service\.name
+_key:\s*null\s*$
+_key\s*=\s*\"LockID
+_key\s*=\s*('test|'stored_|ctrl|'generator)
+_key\s*=\s*'test
+Key:\s*aws-cdk:bootstrap-role
+secret_key:\s*str
+secret=[a-z_]{4,36}secret,$
+Secret:\s*[a-z\-]{4,36}secret$
+Secret:\s*datadog\-secret$
+stop_token\s*=\s*'<
+Secret\s*=\s*azuread_
+prefix_token='THEM:
+token='<PAD
+token='YOU:'
+token=security_token
+token=self\.
+token\s*=\s*args\.
+token\s*=\s*pred_labels
+token\s*=\s*sent\.
+token\s*=\s*(token_|sent_token)
+token\s*=\s*str\(
+token\s*=\s*torch\.
+token\s*=\s*tokenizer\.
+Token\s*=\s*(session|linkedCts|_receiveToken)
+
+#
+# Common Terraform patterns
+#
+key\s*=\s*\"dev
+key\s*=\s*\"stg
+key\s*=\s*\"prd
+
+#
+# Common Python patterns
+#
+\"guest house\"
+<id=key_id\s*key=key
+Id\s*=\s*(newKey,|uploadNotification\.)
+Id\s*=\s*(opCode|map|tag)\.
+Id\s*=\s*\"x-api-key\",
+Id\s*==\s*_testAcc
+
+account_key\s*=\s*account_key
+api_key\s*=\s*(api_key|authenticate|auth_res\.)
+api_key\s*=\s*_model_init_kwargs\[
+api_key\s*=\s*model_config\[
+API_KEY\s*=\s*_model_init\['
+aws_access_key_id=(access_key|aws_access_key_id)
+aws_secret_access_key=aws_secret_access_key
+(aws_secret_access_key|aws_session_token|aws_secret)=credentials\[\'
+bad_key=\"es_map\"
+bad_key=\"_this_is_bad\"\)
+cache_key\s*=\s*(cache_key|get_cache_key\()
+cache_key\s*=\s*
+
+(ACCESS_KEY|KEY_ID)\s*=\s*current_app\.config\.get\('
+AZURE_ACCOUNT_KEY = ServiceEnvCM\.get_azure_account_key\(\)
+(KEY_ID\'\]|KEY_ID)\s*=\s*os\.environ\.get\(
+\(AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY,
+ADDITIONAL_INFO_KEY = \"additional_info\"
+INDEX_KEY\s*=\s*\"rule_index\"
+LAST_TRIGGER_KEY = \"_last_trigger\"
+MEMORY_KEY:\s*self\.
+(MEMORY_KEY|memory_key)\s*=\s*
+GET_SLOTS_MEMORY_KEY
+ENV_KEY:\s*str\s*=\s*\"TL_
+MESSAGE_KEY\s*=\s*\"SESSIONCONTEXT\";
+RULE_KEY
+REASON_KEY
+SECRET_KEY\s*=\s*config\(
+_TIME_KEY
+_INTENT_KEY
+_NAME[S]?_KEY
+_DRIVEN_KEY
+
+ApiKey\s*=\s*apiKey\.GetValue
+key\s*=\s*_(lineCount|_lineCounter|opCount)
+\.flipped_key = flipped_key
+\(\{key: [a-z]{4,16}\}\)
+actual_key\s*=\s*mapped_key
+api_key\s*=\s*request\.headers\.get
+call_key\s*=\s*id\(self\),
+dict_key\s*=\s*(event|self\.event)
+extract_key=\"keywords\"
+environment_key = (l|r)hs.value
+filter_key\s*=\s*(operation|extraction|filter)
+memory_key=MEMORY_KEY
+last_key = key\[-1\]
+map_key = bool
+o_key = o_key\.strip\(\)
+PoolKey = collections\.
+stored_states_key = \"stored_states\"
+self\.alias_key = id\(data\)
+self\.event_dict_key
+self\._key = _cmpkey\(
+simple_key=False\):
+self\.alias_key = id\(data\)
+SimpleKey\(token_number, required,
+self\._client_key = keyfile
+self\.by_key\s*=\s*by_key\.copy\(\)
+self\.key\s*=\s*project_name,
+self\._key\s*=\s*_cmpkey\(
+string\s*shopKey\s*=
+,\s*key=scheme
+,\s*keyfile=None,
+,\s*key\s*=\s*(section|parse)
+openai_api_key=(openai_api_key|\"empty|\"EMPTY)
+:param data_key: train
+read\(key:str\)
+pkey=(False|True)
+(key|key_id)=current_app\.config\.get
+key=avail
+key=base64\.encodebytes\(self\.key\.
+key=\"caller
+key=dlg\.
+key\s*=\s*link\.get\(\"rel\"
+key:\s*Literal\[
+key=\"metadata
+key=operator\.
+key\s*=\s*SimpleKey\(token_number, required,
+key=sorter\)
+key\s*=\s*'train
+key\s*=\s*uuid4
+key\s*=\s*s\.replace
+key\s*=\s*'generator'\s*if
+key\s*=\s*(bs_service|'call_|get_|_get|key_n_records|'keywords'|process_|slot\.|sys\.|unavail|user|usr\/)
+key:\s*value
+key\s*=\s*re\.find
+key:\s*TrackerId\)
+key\s*=\s*CacheController\.
+key\s*=\s*(default|get_color_distance\))
+key\s*=\s*link\[[0-9]{1,2}\]
+key\s*=\s*environment_key\)
+key\s*=\s*_FIELD2
+key\s*=\s*(accountInfo\.|json_|window\.WindowId)
+key\s*=\s*\"conversationId\"
+key\s*=\s*hash\(text\)
+key=attrgetter\(\"
+key\s*=\s*dataDto\.
+key\s*=\s*param\[:
+key\s*=\s*section\s*\+
+key\s*=\s*str\.
+key:\s*event_dict
+key\s*=\s*[\"]?(sales_|llm_|booking|dialog|walkin|customer|agent|dept|already|backend|diversion)
+key\s*=\s*'(arriveBy|departure|destination|duration|leaveAt|pricerange)
+key\s*=\s*\"(arriveBy|leaveAt|pricerange)
+key\s*=\s*normalize\(
+key\s*=\s*(client|field|os\.|entity|next|operation|self\.)
+key\s*=\s*slot\[
+key=\'state_dict
+key\s*=\s*(maskKey|_jsonMaskMap\.|runtimeEntityType\.|train)
+key:\s*typing\.Union\[
+key\s*=\s*words\[
+key=\"bin_prefix\"
+_key:\s*(bool|tuple\[)
+key\s*=\s*_pep_440_key
+key\s*=\s*(ActionData|default|get_rating|type_sort)
+req\.key = canonical_key
+key=position_in_sys_path\)
+_key:\s*tuple\[
+self\._key\s*=\s*_cmpkey\(
+req\.key\s*=\s*canonical_key
+key:\s*pl\.Expr,
+key\s*=\s*(parse_version,|runtimeEntityType\.|stack\.)
+key\s*=\s*[a-z]{4,12}\.get
+Key,\s
+Key\s*=\s*(result\.|accountId;|mapKey)
+Key\s*=\s*box\.BlobNameName
+Key\s*=\s*file[A-Za-z]{2,8}Key,
+Key\s*=\s*fileSpan\[
+Key\s*:\s*(IEquatable|integrationKey)
+Key\s*=\s*(dto|entity|accConfig)\.
+Key\s*=\s*(IntegrationKeys\.|key\.Value|lineKey|LineKey|_line|tag\.Key)
+Key\s*=\s*\"LongCallTimeout\",
+Key\s*=\s*webApplicationBuilder\.Configuration\[
+Key\s*=\s*config\(
+Key\s*=\s*(appConfig\.|maskKey|_jsonMaskMap|jsonObject\[|kvp\.|featureAttributeType\.|grouping|VaultHelper\.)
+Key\s*=\s*(Tuple\[|\"Timezone|\"timezone)
+Key:\s*(Classifier|Extractor)
+
+\{\s*password\s*=\s*item\.
+^\s*password\s*=\s*password\s*or\s*\"\"\s*$
+^\s*Password\s*=\s*(cdkPassword|password)(;|,)\s*$
+config\.set\('pypi',\s*'password
+password':\s*config\.get\(
+password\s*=\s*quote_plus\(os\.getenv\(
+password\s*=\s*self\.
+password=settings\.
+,\s*password = None,
+password\s*=\s*(index|url|str)
+username,\s*password\s*=\s*split
+username\s*=\s*password\s*=\s*None
+username,\s*password\s*=\s*prefix\.split\(
+password\s*=\s*unquote\(password\)
+\('password', None\)\):
+password\s*=\s*ask_password\(\"Password: \"\)
+password\s*=\s*base64\.b16encode\(random_bytes
+Password\s*=\s*platformPassword,
+Password\s*=\s*secretJson\[
+Password\s*=\s*(AnsiConsole|setting)\.
+PASSWORD\s*=\s*config\(
+username, secret_password = user_pass
+self\.password = cfg\.get\('password'\)
+pwd\s*=\s*nexus_pwd
+
+AWS_SQS_SECRET = ServiceEnvCM\.get_aws_sqs_secret\(\)
+aws_secret = config\[\'
+add_secret = '--no-secret' not in arguments
+,\s*shared_secret=shared_secret,
+client_secret=config\.
+print\('SECRET:\s*', secret_name\)
+secret\s*=\s*req_body\.get\(
+SlackChannelSecret\s*:\s*ISlackChannelSecret
+_slackChannelSecret\s*=\s*slackChannelSecret
+_secret\s*=\s*config\.
+
+\{\s*CancellationToken\s*=\s*cancellationToken,\s*\}
+\?token=token\&
+token=msgvavda\.asset_token,
+asset_token=asset_token,
+auth_token = requests\.request
+token\s*:\s*cancellationToken
+token\s*=\s*'EOS_M'
+token\s*=\s*generate_blob_sas\(
+Token\s*=\s*(secret\[|_TokenType\(\))
+Token\s*=\s*TestContext\.
+_token\s*=\s*Token\(
+
+(PASSWORD|password|pwd|token|KEY|key)\s*=\s*os\.getenv\(\"[A-Za-z0-9_]{4,16}\"\)[,]?$
+^\s*password = ""\s*$
+^\s*password: str\s*$
+password: Optional\[HiddenText\]
+username, password = (index_|un,)
+sasl_plain_password=sasl_plain_password
+password: \(bool, optional\):
+password: _PasswordType \| None = None,
+password=(False|True)
+password:\s*(str|None|bool)\s*^=
+password=(cfg|os)\.
+Password\s*=\s*awsSecret\[
+Password\s*=\s*(_clientInfo\.|tenantInfo\.Password)
+
+pwd:\s*str
+pwd\s*=\s*(keyring_get|get_cred)
+
+ientSecret\s*=\s*(secretJson\[|clientSecret)
+secret\s*=\s*(config\.|secrets;)
+
+pad_token\s*=\s*PAD_token
+HF_TOKEN=\$HF
+token\s*=\s*os\.getenv\(\"access_token\", access_token\)
+token\s*=\s*next\(tokens\)
+token\s*=\s*(secret|token)\[
+token='CALLER
+token=(SLACK_TOKEN|PAD_)
+token\s*=\s*(token|cls|_cancellationTokenSource|Volatile)\.
+token\s*=\s*(cancellationToken|self\.)
+token=\"(Your|my)\-(S|s)ecurity\-(T|t)oken\"
+tokenb\s*:\s*cancellationToken
+Token:\s*TestContext\.
+Token\s*=\s*(cancellationToken|CancellationToken|cfg\.|jwtTokenResult\.|response\.|Response\.)
+
+#
+# Common C# patterns
+#
+Id\s*=\s*(account\.|advisor|GetFileName|help|grp\.Key|codeDrive\.|reverseMap|OpCode|_resource\.)
+Id\s*=\s*code\.Key,
+Id\s*=\s*secretJson\[
+Id\s*=\s*secret\[
+Id\s*=\s*(string\.|request\.)
+Id\s*=\s*(NewKey|SourceKey)_Dealer
+client_credentials\&
+(apiKey|secret)\s*=\s*authPair\.Substring
+\.HasPrimaryKey\(opCode
+(keypressEventTimer|keypressEventTimerActivity|keyPressActivity) = 
+processedPayload\.Key = payload\.Key;
+channelId\)\.Key;
+string\s*apiKey\s*=\s*parts\[[0-9]{1}\];
+ApiKey\s*=\s*(apiKey,|Guid\.)
+string\s*(apiKey|sessionToken)\s*=\s*Guid.NewGuid\(
+internal sealed class IntegrationEventAppointmentHandlerKey : IIntegrationEventAppointmentHandlerKey
+string\s*password\s*=\s*await\s*tokenGenerator
+PropertyKey\s*=\s*cs\.PropertyKey
+string key\s*=\s*\"jsonKey\"
+\.TryGetValue\(key: \"Notif
+AccessKeyId\s*=\s*_serviceConfig\.GetValue\(\"
+_awsAccessKeyId\s*=\s*_awsConfig\.AccessKeyId;
+_awsSecretAccessKey\s*=\s*_awsConfig\.SecretAccessKey;
+MapKey\s*=\s*AccountId,
+GetAsync\(key:\s*Utils\.
+string\s*key\s*=\s*\(cp
+ClientKey\s*=\s*ClientKey,
+\.HasKey\(opcode
+key\s*=\s*Renderer\.ReadInput
+string key\s*=\s*\"(listKey|testKey|JsonProperty1)\";
+string key\s*=\s*default\(string\)
+PropertyKey\s*=\s*msg\.PropertyKey
+const\s*string\s*[A-Za-z+]{0,24}Key\s*=\s*\"
+string\?\s*maskKey\s*=\s*_xml
+ConsoleKeyInfo\s*key\s*=\s*Console\.ReadKey\(\)
+Context\.ContainsKey\(
+var\s*dataKey\s*=\s*c
+FileKey\s*=\s*target\.BatchKey,
+,\s*Key\s*=\s*filePath,
+im[0-9]\.key\s*=\s*\"KEY[0-9]\";
+IntegrationKey\s*=\s*json
+UploadFileKey\s*=\s*dataEvent\.GetFileKey\(\)
+tring\?\s*cloudKey\s*=\s*config
+string\s*fileKey\s*=\s*(file|Path\.)
+string\s*privateKey\s*=\s*appConfig\.
+const string [A-Za-z_]{4,48}Key\s*=\s*\"
+var runtimeForeignKey\s*=\s*decl
+property_key\s*=\s*'(Voice|Unknown)
+property_key\s*=\s*propertyKey\)
+PropertyKey\s*=\s*propertyKey
+PropertyKey\s*=\s*configSchemaCheckMessage\.PropertyKey,
+public\s*const\s*string\s*ObjectKey\s*=\s*\"a
+LAST_RESPONSE_KEY\s*=\s*\"_last_
+last_evaluated_key=last_key
+\.get\(hash_key=id\)
+MapKey\s*=\s*TestAccounts\.AccountId
+OptionKey\s*=\s*\"
+output\.PrivateKey\s*=\s*ConfigValue
+const\s*string\s*key\s*=\s*\"Chronos\.
+cr\.Message\.Key\s*=\s*cr\.
+string\s*key\s*=\s*default\)
+string\s*key\s*=\s*default,
+string\?\s*key\s*=\s*default\(string\)
+(Key|KeyId|Secret)\s*=\s*[A-Za-z_]{4,16}Config\.
+^\s*Key\s*=\s*\"
+Key\s*=\s*_serviceConfig\.GetValue
+(K|k)ey\s*=\s*Guid\.
+key\s*=\s*Console\.ReadKey\(
+key\s*:\s*(loki\.|get)
+key\s*=\s*(attribute\.|builder\.Config)
+key\s*=\s*Convert
+key\s*=\s*(IntegrationKey|item|)\.
+key\s*=\s*stack\.key:\s*\"(Notification|testkey)
+key\s*=\s*(string\.Format|table\.)
+key\s*=\s*key[s]?\.
+key\s*=\s*Utils\.
+key\s*=\s*\"test\-
+(K|k)ey\s*=\s*(integration|queryResponse|reverseMap|testInput\.)
+(Key|secret)\s*=\s*string\.Empty
+Key\s*=\s*(context\.Configuration\[|eventSender\.|fileKeys|roEvent\.|repairOrderEvent\.|sender\.)
+Key\s*=\s*storageFileName
+Key\s*=\s*telemetryConfig\.Get
+Key\s*=\s*table\.Col
+Key\s*=\s*key\.ToLower\(\),
+Key\s*=\s*TIntegrationEventAppointmentHandler\.Name,
+Key\s*=\s*fileName,
+Key\s*=\s*(C|c)lientKey;
+Key\s*=\s*builder\.
+Key\s*=\s*CompositeFormat\.
+Key\s*=\s*ConfigProperty\.
+Key\s*=\s*(DefaultValues|IntegrationKey|interval)\.
+Key\s*=\s*(Get|Convert)
+Key\s*=\s*(TekionConstants\.|accountId,)
+Key\s*=\s*(access|secret)Key
+Key\s*=\s*(config\.|_options)
+Key\s*=\s*(info|attribute)\.
+Key\s*=\s*(access|secret|ResourceType)
+Key\s*=\s*\"Description
+Key\s*=\s*\"(Availability|Account|AskOtp|Company|DefaultCoun|downloads|Opcode)
+Key\s*=\s*\"(Platform|Postfix|provider|Supported)
+Key\s*=\s*\"(test|testInput)
+Key\s*=\s*\"Transport
+Key\s*=\s*\"WebChat
+Key\s*=\s*\"DataPlatform
+Key\s*=\s*Convert
+Key\s*=\s*Encoding\.UTF8\.Get
+Key\s*=\s*(box\.|dealer\.|entry\.Key,|\"cusId)
+Key\s*=\s*nameof
+Key\s*=\s*nextFetch
+Key\s*=\s*request\.
+Key\s*=\s*response\.
+Key\s*=\s*secret\[Tekion
+Key\s*=\s*stack
+Key\s*=\s*subscriptionKey;
+Key\s*=\s*_cache
+Key\s*=\s*(fileLey|fileKey),
+Key\s*=\s*signingKey\.Replace\(
+Key\s*=\s*item\.Value\.Replace\(
+Key\s*=\s*templateName
+Key=\"timezone\",
+Key\s*=\s*val\.Replace\(
+Key\s*=\s*kvp\.Key,
+Key\s*=\s*msg\.Key\?
+Key\s*=\s*src\.Key;
+Key\s*=\s*property_key;
+
+Cfg\.SaslPassword\s*=\s*tmpSaslPassword;
+string\s*password\s*=\s*secretValue\[\"password\"\]
+string\?\s*actualPassword\s*=\s*null;
+actualPassword\s*=\s*request\.AuthParameters\[\"PASSWORD\"\];
+
+(P|p)assword\s*=\s*secret\[
+(P|p)assword\s*=\s*_clientInt
+password\s*=\s*authParts\[
+password\s*=\s*(keyValuePair\[|config)
+password\s*=\s*table\.Column<
+password\s*=\s*models\.CharField\(
+_password\s*=\s*password;
+cCfg\.SaslPassword\s*=\s*tmpSaslPassword;
+SaslPassword\s*=\s*config\[\"
+\.Password\s*=\s*dbCreds\.
+^\s*Password\s*=\s*Password\s*$
+Password\s*=\s*cfg\[
+Password\s*=\s*(databaseConnection|string\.IsNullOrWhiteSpace\(request\.|request\.|testConnectionStringBuilder\.)Password
+Password\s*=\s*creds\.
+Password\s*=\s*azureConnection\.password,
+Password\s*=\s*dbConfiguration\[
+Password\s*=\s*(dbConfig\.Get|null)
+Password\s*=\s*databaseConfiguration
+Password\s*=\s*(Env|Get|ariConfig)
+Password\s*=\s*_option\.CustomPassword\.
+Password\s*=\s*_dbConfig\[\"
+String platformPassword\s*=\s*secretJson\[\"
+_selectedEnv\.Password\s*=\s*Ansi
+
+ClientSecret\s*=\s*(_jwtConfig|azureClientCred)\.
+_secret\s*=\s*Encoding\.ASCII\.GetBytes
+Secret\s*=\s*GetPropertyValue
+secret=(testClientSecret|self\.)
+\.Secret\s*=\s*config\[\"
+\.Secret\s*=\s*Convert\.ToBase64
+
+_authToken\s*=\s*config\.Twilio\.Token;
+_authToken\s*=\s*config\.GetVal
+^\s*AuthToken\s*=\s*authToken\s*$
+options\.AuthToken\s*=\s*appConfig\.
+public\s*const\s*string\s*AuthToken\s*=\s*\"identity\.auth_token\";
+string\s*token\s*=\s*tokenStr\.Replace\(\"
+SessionToken\s*=\s*conv\.Session,
+SessionToken\s*=\s*msg\.Header\.SessionToken
+\.SessionToken\s*=\s*_adminAuthToken\.Token;
+cancellationToken\)\.
+,\s*cancellationToken:\s*ct\)\.
+JwtToken\s*jwtToken\s*=\s*jwtT
+JwtToken\?\s*jwtToken\s*=\s*Volatile\.Read
+DealerToken\s*=\s*dealerToken;
+IChangeToken\s*changeToken\s*=\s*_physical
+
+\{\s*Token\s*=\s*\"token\"\s*\}
+(T|t)oken\s*=\s*default\)
+token\s*=\s*i\.Split\(
+token\s*=\s*basicAuthResponse\?
+token\s*=\s*GenerateToken\(
+token\s*=\s*_authMgr\.GenerateToken\(
+token\s*=\s*basicAuthResponse\.Value
+token\s*=\s*(authHeader|context)\.
+token\s*=\s*credentials\.GetToken\(
+token\s*=\s*Get
+token\s*=\s*section\.GetValue<
+token\s*=\s*tokenMgr\.Decode
+Token\s*jwtToken\s*=\s*_tokenHandler\.Read
+Token\s*=\s*twilioConfig\.
+Token\s*=\s*(appConfig|_appConfig)\.
+Token:\s*[A-Za-z]{4,16}Token
+Token\s*=\s*authRequest\.
+Token\s*=\s*(content\.|context\.|accessToken)
+Token\s*=\s*JsonConvert\.DeserializeObject
+Token\s*=\s*_tokenHandler\.ReadJwtToken
+Token\s*=\s*(token|req\.|securityManager|httpContext|\"access_token)
+Token\s*=\s*\"access(Secret|Token)\";
+Token\s*=\s*\"Tekion
+Token\s*=\s*\"token\";
+Token\s*=\s*Constants\.
+Token\s*=\s*secret\[Tekion
+
+#
+# Common SQL patterns
+#
+(AND|WHERE|UPDATE|FOR)\s*[\(]?property_key\s*=\s*\'
+DELETE FROM\s*configuration_item
+WHERE ci\.config_set_id =
+ci\.property_key\s*=\s*'
+property_key\s*=\s*'[A-Za-z]{4,24}' OR
+property_key\s*=\s*'[A-Za-z]{4,24}'\) OR
+
+FOR [A-Za-z]{4,16} IN SELECT
+SELECT [0-9]{1,2} FROM
+SELECT id FROM
+where\s*property_key\s*=\s*'
+
+<o:UsernameToken
+TenantId\s*=\s*g\.
+
+#
+# Common Go patterns
+#
+decodedToken\s*:=\s*&RawToken\{
+csr\.Indexes\[[0-9]{1}\]\.Key\s*=\s*\"
+tokenHeader: \"NotBearer aValue\"
+Key:\s*\"the[0-9]Property\"
+Key:\s*\"aggregation
+password:\s*password,
+Password:\s*parts\[
+PASSWORD:\$
+Secret:\s*client
+token:\s*(string|fmt\.)
+Token:\s*(token|xxxxxxXxxxxxxAccessToken|apiContext)
+Token:claims
+Token:\s*sps
+tokenHeader:\s*\"Bearer
+
+#
+# Common shell script patterns
+#
+KEYID=\$\{AWS
+PASS=\"{2}
+PASS=\$PASSWORD
+Secret=local\/db
+\s*\-\s*key:\s*[a-z]{4,16}\.sh
+, password = \$PASSWORD,
+
+#
+# Common text file patterns
+#
+Key:\s*dealerNumber\-
+
+#
+# Common markdown patterns
+#
+<add key=\"
+tf_state_key:\s*\"data-platform-base\"
+KEY_ID=$
+Key:\s*(ResourceId|DispatchCode)\s*\+\s*TenantId
+key=value\[
+key\s*:\s*\"perf-testing\"
+password=\[PASSWORD\]
+password:\s*myPasswordKey
+Password\s*:\s*(false|true)
+password=\"<Valid password for id from OAUTH provider>\";
+usePassword\s*=\s*(false|true)
+\-\-header\s*\"PRIVATE\-TOKEN:\s*<your_access_token>\"
+aws_secret_key:\s*\$\{\{\s*secrets\.AWS_SECRET_KEY\s*\}\}
+tokens are sent as part of authorization header in each API call
+
+#
+# Common TypeScript patterns
+#
+Id:\s*string
+id='password'
+IdKeys\?\.includes
+datadogApiKey: EcsSecret;
+LOGIN_API_KEY:\s*'\/api\/auth\/api_key',
+^\s*DD_API_KEY:\s*datadogApiKey,
+apikey:\s*secret,
+ApiKey\s*=\s*(Secret|EcsSecret)\.fromSsmParam
+selfProps\.datadogApiKey,
+propertyKey:\s*\"
+loadingKey:\s*LoadingKey
+(propertyKey|property_key):\s*property_key,
+property_key:\s*propertyKey,
+^\s*propertyKey:\s*string;
+callRoutingKey = \"callRouting\";
+key: ConfigKey;
+KEY\s*=\s*'key
+_CACHE_KEY\s*=\s*\"(PLATFORM|SPS)
+CONFIG_KEY\s*=\s*\"(Departments|Event|Live)
+KEY_SECRET\s*=\s*process\.env\.
+^\s*expect\.objectContaining\(\{\s*key:\s*\"
+flagKey:\s*FeatureFlagKeyType;
+intervalKey\s*=\s*setInterval
+queryKey:\s*cacheKey[s]?Util\.
+loadingKey:\s*LoadingKeys,
+optionKey:\s*OptionKey,
+ObjectKey\s*=\s*field
+undefined,\s*key:\s*"
+~\s*key:\s*getFieldDatabaseName
+\]:\s*\{\s*key:\s*\"
+:\s*\(key:\s*Key
+<T>\(key:\s*Key 
+\{\s*key:\s*\"[A-Za-z]{4,16}\",
+essageKey: 'message',
+(K|k)ey:\s*(Secret|string|number|z\.string|req\.|audit\?)
+key:\s*props\.
+^\s*key:\s*(\'|\")[a-zA-Z_]{4,64}(\'|\"),\s*$
+cKey:\s*qCacheKey
+cKey =\s*request
+key:\s*\"mui-style\"
+key:\s*KeyType
+key:\s*property\.key
+key:\s*'DELIVERY MOBILE SERVICE',
+Key:\s*IDraggableItem\[
+const key = cap\.capacityFrequency
+Key\s*=\s*Deno\.env
+Key:\s*(props|Alias|EcsSecret)\.
+Key\s*=\s*(rLabelKey|appointment\?|Yup\.)
+Key\s*=\s*resources\.
+key:\s*\"PropKey
+Key\s*=\s*async\s*\(s
+Key:\s*Yup\.boolean
+(key|Key|Secret):\s*undefined,\s*$
+\{\s*key:\s*\"Arrow
+
+export const getAzurePostgresPassword = async ()
+const\s*password\s*=\s*xxxxxxApi\.appPwd;
+,\s*password:\s*string\)
+^\s*password:\s*(true|false),\s*$
+(password|Secret|Token):\s*psAuth\.
+password:\s*psTransport\.password,
+password:\s*Cypress\.env\(\"
+password\s*=\s*\"\";
+password\s*=\s*GeneratePassword\([0-9]{2}\);
+(password|Token):\s*undefined,
+(P|p)assword\s*(:|=)\s*async \(\)
+password: (string|token)(;|,)
+
+process\.env\.DB_SECRET_NAME
+secret = Secret\.fromSecret
+secret: Secret,
+secret:\s*process\.
+client(_secret|Secret)\s*:\s*process\.
+
+client_secret:\s*azureAD\.clientSecret,
+IDBSecret\s*=\s*myCache\.get\('secret-db'\);
+recordId\s*=\s*configRecord\.
+secret:\s*String\(process\.env
+
+platformApiToken:\s*string
+accessToken\s*=\s*account\?\.access_token;
+access_token:\s*withECBACToken
+refresh_token:\s*refresh
+API_TOKEN\s*=\s*\"api_token\"
+TOKEN = \"token\",
+^\s*session_token\s*:\s*this\.session_token
+token\s*(:|=)\s*(access|refresh|Custom|sessionStorage|env\[)
+Token:\s*(cookies|get|property\.|response\.|string)
+const\s*token\s*=\s*apiKeyResponse\.body;
+const\s*token\s*=\s*response\.data;
+token\s*=\s*reponse\.
+token:\s*sessionToken,
+token\s*=\s*cookies\[Cookies
+token:\s*jose\.JWTPayload,
+token\s*=\s*getAccessToken\(
+Token\s*=\s*getAccessToken
+Token:\s*data\.access
+Token:\s*boolean
+Token\s*=\s*async\s*\(
+TOKEN\s*=\s*'aut
+Token\s*=\s*account\?\.access_token;
+\(\{\s*token:\s*payload,
+
+#
+# Common Javascript patterns
+#
+\"description\":\s*\"Get
+authToken\s*=\s*__nccwpck_require__\([0-9]{1,3}\)
+const\s*(hostHeaderKey|key)\s*=\s*find\(
+const\s*DD_API_KEY\s*=\s*process\.env\.
+ctrlKey: [a-z]{1}\.ctrlKey
+exports\.(get|set)[A-Za-z]{4,12}\s*=\s*(exports|setSecret;|getIDToken;)
+exports\.set[A-Za-z]{4,12}\s*=\s*__nccwpck_require__\([0-9]{1,2}\)\.setThePassword;
+hotkey:\s*\"hotkey
+hotkey\s*=\s*([a-z]{1}\.child|function|\")
+(On|hot|do|sub)(K|k)ey\s*=\s*function
+htmlx\.security_key = data\.
+namespaceKey\s*=\s*Object\.keys\(response\.data\)
+shiftKey: [a-z]{1}\.shiftKey
+sortKey\s*=\s*sortKeys\[
+accessKey:\s*(access|secret)Key,
+(camel|internal)Key\s*=\s*jQuery\.
+secretKey:\s*secretKey,
+valuesByKey = map
+var subkey = keysAr
+\s*key=value,key=value
+'\/ssl\/private\.key'
+Key = keyPrefix\$[0-9]{1}
+Key = percent
+\(\{key: property\.slice
+\(key = this\.
+\?key=\"\s*\+\s*key
+key = camelCase\(
+key = keys\[
+key = this\.
+key \? bindKey : bindIndex
+key: (\"|')(access|referrer|cross|cache|x|strict)\-
+key\s*=\s*source(SymbolKeys|Keys)\[[a-z]{1}\]
+(K|k)ey\s*=\s*function
+(K|k)ey: function
+
+module\.exports\.setThePassword\s*=\s*function\s*\(url,\s*password\)
+url\.password\s*=\s*\"\"
+this\.password\s*=\s*password;
+this\.url\.password\s*=\s*this\.base\.password
+
+clientSecret\s*=\s*process\.env\.CLIENT_SECRET_KEY;
+secret\s*=\s*match\[
+
+const\s*token\s*=\s*process\.env\[\'
+token = document\.
+token = tokens\[
+token:\s*core\.getInput
+Token:\s*access_token,
+
+#
+# Common Java patterns
+#
+\"Bearer Bearer \" \+ token\)
+\"Bearer myToken\"\)
+
+Id\s*:\s*map\.
+
+TYPE_KEY = '
+\.addHeader\(\"Authorization\", \"Bearer Bearer \" \+ getToken\(stack\)\)
+\.isEqualTo\(\"Bearer [A-Za-z_]{4,24}oken\"\);
+_Token\s*=\s*System\.getenv
+(_KEY|TOKEN|token)\s*=\s*System\.getenv\(\"
+for\s*\(String\s*key\s*:\s*headers\.keySet\(\)
+for\s*\(String\s*key\s*:\s*map\.keySet\(\)
+
+n\.key\s*=\s
+JobKey\s*jobKey\s*:\s*scheduler\.get
+
+key\s*:\s*(a\.|keyList|this\.|mapping\.|rawConfigs\.)
+key\s*=\s*callsid\s*\+\s
+key\s*=\s*(callIdChannel\.|isTestSuite\s*\?|objectKey)
+Key\s*=\s*objectKey
+Key\s*=\s*ad\.getSid\(\);
+key\s*=\s*gAuth\.create
+Key\s*=\s*entry\.getKey\(\)
+Key\s*=\s*(vo|StringUtils)\.
+key\s*:\s*dates\.
+Key\s*=\s*KeyStroke\.
+
+password\s*=\s*System\.getenv
+Password\s*=\s*password;
+PASSWORD\s*=\s*System\.getenv
+
+lowerCaseKey\s*=\s*splitHeaderField\[
+Parameter\(key\s*=\s*[A-Z_]{4,24},
+password\s*=\s*config\.
+password\s*=\s*driver\.find
+password\s*=\s*userAgent\.getConfig
+password\s*=\s*websocket_password;
+schId\s*=\s*tshEntry\.getKey\(\);
+static final String AUTHORIZATION = \"Bearer
+String\s*callId\s*=\s*call\.getKey\(\);
+String\s*key\s*=\s*action\.opt
+String\s*key\s*=\s*condition\.
+String\s*key\s*=\s*dealerVO\.get
+String\s*key\s*=\s*StringUtils\.
+String\s*key\s*=\s*toKey\(from
+String\s*key\s*=\s*vo\.getKey\(\);
+String\s*key:\s*(base|dev)\.
+String\s*newToken\s*=\s*response\.body
+String\s*password\s*=\s*ctx\.basicAuthCredentials\(\)\.getPassword\(\)
+String\s*searchKey\s*=\s*ctx\.queryParam\(\"key\"\)
+String\s*token\s*:\s*splitElements\(
+this\.asteriskPassword\s*=\s*asteriskPassword;
+this\.clientSecret\s*=\s*clientSecret;
+this\.jobKey\s*=\s*jobKey;
+
+SECRET\s*=\s*System\.getenv
+token\s*=\s*(getToken|newTokey|taggedTokens)
+token\s*=\s*response\.body
+token\s*=\s*serverWebExchange\.getRequest\(\)\.getQueryParams\(\)
+token\s*=\s*Utility\.httpGet\(
+token\s*=\s*websocketToken\.get
+Token\s*=\s*(cachedTokens\.|buildAccessTokenAuthHeader)
+TOKEN\s*=\s*\"Basic\s*\%s\"
+TOKEN\s*=\s*UUID\.
+
+#
+# Common Terraform patterns
+#
+key\s*=\s*\"astersk\-(a|b|c)\"
+_key\s*=\s*data\.
+key\s*=\s*azurerm_storage_account\.
+(token|tokens)*=\s*data\.aws_eks_cluster_auth\.
+password\s*=\s*var\.synadmin_password
+
+#
+# Common ENV values
+#
+MOUNT_SSL_REGISTRY_KEY=\.\/ssl\/registry\.key

@@ -1,0 +1,10 @@
+[FP01] sasl_plain_password: str = None):
+[FP02] PASS : A booking can be  (Value:
+[FP03] KEY =  (Value:
+[FP04] KEY = _model_init[ (Value: 
+[FP05] pwd = getpass.getpass("Grafana password: ")
+[FP06] ADMIN_PASSWORD: "${ADMIN_PASSWORD}"
+[FP07] POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
+[FP08] REPO_PASSWORD: ${{ secrets.REPO_PASSWORD }}
+[FP09] SECRET =  (Value:  )
+[FP10] password: ""

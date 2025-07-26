@@ -1,0 +1,16 @@
+# Matches password-related keywords followed by a space, e.g., PASSWORD 
+(PASS|PASSWORD|(P|p)assword|pwd|(K|k)ey|KEY|SECRET|(S|s)ecret|TOKEN|(T|t)oken|_id:|credential:)
+
+# Matches AWS key assignments, e.g., AWS_SECRET_KEY="abcd1234"
+AWS[ _-]?(SECRET|ACCESS)[ _-]?(KEY)=[\"']?([^#\$\s\"']+)
+
+# Matches Azure key assignments, e.g., AZURE_CLIENT_SECRET=abcd1234abcd1234abcd1234abcd1234
+AZURE[ _-]?(CLIENT|STORAGE|SUBSCRIPTION)[ _-]?(SECRET|KEY|ID)[=:\s]([A-Za-z0-9]{32,})
+
+# TODO: Optimize this into a single expression
+(api|access)[_-]?(K|k)ey\s*(:|=)\s*[\"]?[A-Za-z0-9\-_\/\+]{32,64}[\"]?
+
+(https|postgresql):\/\/[^\/:]{3,12}:[^\/:]{3,12}@
+
+[a-z]{4,16}\.login=[a-z0-9]{12,48}
+https:\/\/hooks\.slack\.com\/services\/[A-Za-z0-9\/]{44,48}

@@ -1,0 +1,15 @@
+#
+# Use this file to drop known-bad strings from your codebase -- items you know you'll need to flag
+#
+
+# Matches specific strings unique to the codebase, e.g., 'guest' or 'password'
+FollowTheWhiteRabbit|'guest'|\"guest\"|'password'
+
+# Matches private key markers and AWS credentials, e.g., "BEGIN PRIVATE KEY" or "AWS_SECRET_ACCESS_KEY"
+(BEGIN|END) PRIVATE KEY|AWS_SECRET_ACCESS_KEY|AWS_ACCESS_KEY_ID|(secret|access|signing|aws_sec)_key:
+
+# Matches alphanumeric strings of length 32-44, avoiding BSD grep mismatches
+#[A-Za-z0-9_]+\"\s*:\s*\"[A-Za-z0-9+/]{4,}={0,2}
+
+# Matches AWS Access Key IDs, e.g., "AKIAEXAMPLE12345678"
+AKIA[0-9A-Z]{16}
