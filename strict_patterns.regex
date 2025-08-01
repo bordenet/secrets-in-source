@@ -1,0 +1,49 @@
+# 1 Matches password assignments, e.g., PASS='mysecretpassword', e.g. [P40] secret: w3j8Q~d6.-CmrKFdqYnoGAKSincm
+(PASS|PASSWORD|(P|p)assword|pwd|[^ ]key|KEY|SECRET|(S|s)ecret|TOKEN|(T|t)oken|_credential)\s*(=|:)\s*[\"'][^\"']{4,64}[\"'].{0,64}
+((K|k)ey|(S|s)ecret|TOKEN|(T|t)oken|_credential|(I|account_i)d)\s*(=|:)\s*['\"]{0,1}[0-9A-Za-z\-_\+][^ '\"]{6,64}.{0,64}
+
+# 2 [P22] password: 'steven',
+password:\s*'[^\$\{']{1,3}[^']{4,8}',
+
+# 3 [P23] //     'password': 'admin',
+'password':\s*'[^'\$\{]{1,16}'
+
+# 2 Matches password assignments without quotes, e.g., PASS=mysecretpassword
+(PASS|PASSWORD|Password|password|pwd|KEY|SECRET|TOKEN)\s*(:|=)\s*[^[:space:]\"']{3,64}.{0,64}
+
+# 3 Matches password assignments with long double-quoted values, e.g., PASS="mysecretpassword123456789" or PASS='mysecretpassword123'
+(PASS|PASSWORD|Password|password|pwd|KEY|SECRET|TOKEN)\s*=\s*[\"'][^\"']*[\"'].{0,64}
+
+# 4 Cloud Provider-Specific: AWS_SECRET_KEY="abcdefg12345"
+(AWS[ _-]?(SECRET|ACCESS)[ _-]?(KEY)=[\"\']?([^#\$\s\"\']{1,64})).{0,64}
+
+# 5 Cloud Provider-Specific: AZURE_SECRET_KEY=abcdefg12345
+(AZURE[ _-]?(CLIENT|STORAGE|SUBSCRIPTION)[ _-]?(SECRET|KEY|ID)\s*(=|:)\s*[A-Za-z0-9]{32,64}).{0,64}
+
+# 6 Matches general secret assignments, e.g., SECRET=mysecret
+(SECRET\s*[:=]\s*['\"]?[^[:space:]\"']+).{1,64}
+
+# 8 Matches general token/key patterns, e.g., AKIA1234567890
+(AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z\\-_]{35}|sk_live_[0-9a-zA-Z]{24}|Bearer [0-9A-Za-z\\-_]+|eyJ[a-zA-Z0-9\\-_]+\\.[a-zA-Z0-9\\-_]+\\.[a-zA-Z0-9\\-_]+|ssh-(rsa|dss) [A-Za-z0-9+/=]+).{1,24}
+
+# 9 Matches assignments where the value is set to default, e.g., default='secret'
+(PASS|PASSWORD|Password|password|pwd|KEY|SECRET|TOKEN)\s*\(default='[^']*'.{1,64}
+
+# 10 Python-specific patterns A
+(PASS|PASSWORD|Password|password|pwd|KEY|SECRET|TOKEN)\s*(default='[^']{1,24}').{0,24}
+
+# 11 Python-specific patterns B
+setdefault\('[^']{1,32}_(PASS|PASSWORD|Password|password|pwd|KEY|SECRET|TOKEN)',\s*'[^'][A-Z0-9_]{1,32}'\).{0,64}
+
+# 12 API keys, e.g. api_key="abcd1234abcd1234abcd1234abcd1234"
+(api|access)[_-]?(K|k)ey\s*(:|=)\s*[\"]?[A-Za-z0-9\-_\/\+]{32,64}[\"]?
+(https|postgresql):\/\/[^\/:]{3,12}:[^\/:]{3,12}@
+
+#
+# TODO: Optimize these into a single expression
+#
+api[_-]?(K|k)ey\s*(:|=)\s*\"[A-Za-z0-9\-_]{32,64}\"
+api[_-]?(K|k)ey\s*(:|=)\s*[A-Za-z0-9\-_]{32,64}
+
+[a-z]{4,16}\.login=[a-z0-9]{12,48}
+https:\/\/hooks\.slack\.com\/services\/[A-Za-z0-9\/]{44,48}
