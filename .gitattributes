@@ -1,0 +1,22 @@
+# Ensure consistent line endings across all platforms
+* text=auto eol=lf
+
+# Explicitly declare text files
+*.go text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.json text eol=lf
+*.regex text eol=lf
+*.sh text eol=lf
+Makefile text eol=lf
+
+# Denote binary files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+
