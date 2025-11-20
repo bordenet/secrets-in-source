@@ -1,6 +1,6 @@
 # Binaries
-passhog
-passhog.exe
+fasthog
+fasthog.exe
 *.exe
 *.dll
 *.so
@@ -10,9 +10,11 @@ passhog.exe
 *.test
 
 # Output files
-passhog_results*.txt
+fasthog_results*.txt
+results.txt
+results.json
 trufflehog_all.json
-passhog_all.txt
+fasthog_all.txt
 
 # Coverage
 *.out
@@ -33,5 +35,5 @@ Thumbs.db
 *.tmp
 *.log
 
-# AI instructions
-.github/instructions/codacy.instructions.md
+# Development artifacts
+.github/instructions/

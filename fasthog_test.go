@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"testing/fstest"
 
@@ -953,5 +954,665 @@ func TestLoadEffectivePatternsWithDefaults(t *testing.T) {
 	}
 	if slow.FindString(testLine) == "" {
 		t.Error("default slow patterns should match known secret line")
+	}
+}
+
+func TestMergeExcludeDirs(t *testing.T) {
+	t.Run("no extra dirs returns copy of defaults", func(t *testing.T) {
+		result := mergeExcludeDirs(nil)
+		if len(result) != len(defaultExcludeDirs) {
+			t.Errorf("expected %d dirs, got %d", len(defaultExcludeDirs), len(result))
+		}
+		// Verify it's a copy, not the same slice
+		if &result[0] == &defaultExcludeDirs[0] {
+			t.Error("expected a copy of defaultExcludeDirs, got same slice")
+		}
+		for i, dir := range defaultExcludeDirs {
+			if result[i] != dir {
+				t.Errorf("expected result[%d] = %s, got %s", i, dir, result[i])
+			}
+		}
+	})
+
+	t.Run("empty slice returns copy of defaults", func(t *testing.T) {
+		result := mergeExcludeDirs([]string{})
+		if len(result) != len(defaultExcludeDirs) {
+			t.Errorf("expected %d dirs, got %d", len(defaultExcludeDirs), len(result))
+		}
+	})
+
+	t.Run("extra dirs are appended", func(t *testing.T) {
+		extra := []string{"custom1", "custom2"}
+		result := mergeExcludeDirs(extra)
+		expectedLen := len(defaultExcludeDirs) + len(extra)
+		if len(result) != expectedLen {
+			t.Errorf("expected %d dirs, got %d", expectedLen, len(result))
+		}
+		// Verify all defaults are present
+		for _, dir := range defaultExcludeDirs {
+			if !slices.Contains(result, dir) {
+				t.Errorf("expected result to contain default dir %s", dir)
+			}
+		}
+		// Verify all extras are present
+		for _, dir := range extra {
+			if !slices.Contains(result, dir) {
+				t.Errorf("expected result to contain extra dir %s", dir)
+			}
+		}
+	})
+
+	t.Run("duplicates are removed", func(t *testing.T) {
+		// Add a duplicate of a default dir
+		extra := []string{".git", "custom"}
+		result := mergeExcludeDirs(extra)
+		// Should not have duplicate .git
+		count := 0
+		for _, dir := range result {
+			if dir == ".git" {
+				count++
+			}
+		}
+		if count != 1 {
+			t.Errorf("expected .git to appear once, appeared %d times", count)
+		}
+	})
+
+	t.Run("duplicate extras are removed", func(t *testing.T) {
+		extra := []string{"custom", "custom", "other"}
+		result := mergeExcludeDirs(extra)
+		count := 0
+		for _, dir := range result {
+			if dir == "custom" {
+				count++
+			}
+		}
+		if count != 1 {
+			t.Errorf("expected custom to appear once, appeared %d times", count)
+		}
+	})
+}
+
+func TestLoadEffectivePatternsWithOverrides(t *testing.T) {
+	// Create temporary pattern files
+	tmpDir := t.TempDir()
+
+	customExclude := filepath.Join(tmpDir, "custom_exclude.regex")
+	if err := os.WriteFile(customExclude, []byte("test_exclude_pattern\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	customFast := filepath.Join(tmpDir, "custom_fast.regex")
+	if err := os.WriteFile(customFast, []byte("test_fast_pattern\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	customStrict := filepath.Join(tmpDir, "custom_strict.regex")
+	if err := os.WriteFile(customStrict, []byte("test_strict_pattern\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	customDirect := filepath.Join(tmpDir, "custom_direct.regex")
+	if err := os.WriteFile(customDirect, []byte("test_direct_pattern\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Change to tmpDir so relative paths work
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := os.Chdir(origDir); err != nil {
+			t.Error(err)
+		}
+	}()
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("override exclude patterns", func(t *testing.T) {
+		pf := PatternFiles{Exclude: "custom_exclude.regex"}
+		exclude, _, _, err := loadEffectivePatterns(pf)
+		if err != nil {
+			t.Fatalf("loadEffectivePatterns failed: %v", err)
+		}
+		if !exclude.MatchString("test_exclude_pattern") {
+			t.Error("custom exclude pattern not loaded")
+		}
+	})
+
+	t.Run("override fast patterns", func(t *testing.T) {
+		pf := PatternFiles{Fast: "custom_fast.regex"}
+		_, fast, _, err := loadEffectivePatterns(pf)
+		if err != nil {
+			t.Fatalf("loadEffectivePatterns failed: %v", err)
+		}
+		if !fast.MatchString("test_fast_pattern") {
+			t.Error("custom fast pattern not loaded")
+		}
+	})
+
+	t.Run("override strict patterns", func(t *testing.T) {
+		pf := PatternFiles{Strict: "custom_strict.regex"}
+		_, _, slow, err := loadEffectivePatterns(pf)
+		if err != nil {
+			t.Fatalf("loadEffectivePatterns failed: %v", err)
+		}
+		if !slow.MatchString("test_strict_pattern") {
+			t.Error("custom strict pattern not loaded")
+		}
+	})
+
+	t.Run("override direct patterns", func(t *testing.T) {
+		pf := PatternFiles{Direct: "custom_direct.regex"}
+		_, _, slow, err := loadEffectivePatterns(pf)
+		if err != nil {
+			t.Fatalf("loadEffectivePatterns failed: %v", err)
+		}
+		if !slow.MatchString("test_direct_pattern") {
+			t.Error("custom direct pattern not loaded")
+		}
+	})
+
+	t.Run("override both direct and strict", func(t *testing.T) {
+		pf := PatternFiles{Direct: "custom_direct.regex", Strict: "custom_strict.regex"}
+		_, _, slow, err := loadEffectivePatterns(pf)
+		if err != nil {
+			t.Fatalf("loadEffectivePatterns failed: %v", err)
+		}
+		if !slow.MatchString("test_direct_pattern") {
+			t.Error("custom direct pattern not loaded")
+		}
+		if !slow.MatchString("test_strict_pattern") {
+			t.Error("custom strict pattern not loaded")
+		}
+	})
+
+	t.Run("error on missing exclude file", func(t *testing.T) {
+		pf := PatternFiles{Exclude: "nonexistent.regex"}
+		_, _, _, err := loadEffectivePatterns(pf)
+		if err == nil {
+			t.Error("expected error for missing exclude file")
+		}
+		if !strings.Contains(err.Error(), "failed to load exclude patterns") {
+			t.Errorf("unexpected error message: %v", err)
+		}
+	})
+
+	t.Run("error on missing fast file", func(t *testing.T) {
+		pf := PatternFiles{Fast: "nonexistent.regex"}
+		_, _, _, err := loadEffectivePatterns(pf)
+		if err == nil {
+			t.Error("expected error for missing fast file")
+		}
+		if !strings.Contains(err.Error(), "failed to load fast patterns") {
+			t.Errorf("unexpected error message: %v", err)
+		}
+	})
+
+	t.Run("error on missing strict file", func(t *testing.T) {
+		pf := PatternFiles{Strict: "nonexistent.regex"}
+		_, _, _, err := loadEffectivePatterns(pf)
+		if err == nil {
+			t.Error("expected error for missing strict file")
+		}
+		if !strings.Contains(err.Error(), "failed to load strict patterns") {
+			t.Errorf("unexpected error message: %v", err)
+		}
+	})
+}
+
+func TestRunFasthogJSONComprehensive(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create test files with secrets
+	secretFile := filepath.Join(tmpDir, "config.yml")
+	if err := os.WriteFile(secretFile, []byte("password: secret123\napi_key: sk_test_abc\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cleanFile := filepath.Join(tmpDir, "readme.txt")
+	if err := os.WriteFile(cleanFile, []byte("This is a clean file\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("successful scan with output file", func(t *testing.T) {
+		outputFile := filepath.Join(tmpDir, "results.json")
+
+		// Redirect stdout to capture JSON output
+		oldStdout := os.Stdout
+		r, w, _ := os.Pipe()
+		os.Stdout = w
+
+		err := runFasthogJSON(tmpDir, []string{".yml", ".txt"}, defaultExcludeDirs, PatternFiles{}, outputFile)
+
+		_ = w.Close()
+		os.Stdout = oldStdout
+
+		if err != nil {
+			t.Fatalf("runFasthogJSON failed: %v", err)
+		}
+
+		// Verify output file was created
+		data, err := os.ReadFile(outputFile)
+		if err != nil {
+			t.Fatalf("failed to read output file: %v", err)
+		}
+
+		var result JSONResult
+		if err := json.Unmarshal(data, &result); err != nil {
+			t.Fatalf("failed to parse JSON output: %v", err)
+		}
+
+		// Verify JSON structure
+		if result.Directory != tmpDir {
+			t.Errorf("expected directory %s, got %s", tmpDir, result.Directory)
+		}
+		if len(result.Extensions) != 2 {
+			t.Errorf("expected 2 extensions, got %d", len(result.Extensions))
+		}
+		if result.Summary.TotalFilesScanned != 2 {
+			t.Errorf("expected 2 files scanned, got %d", result.Summary.TotalFilesScanned)
+		}
+		if result.Summary.TotalMatches == 0 {
+			t.Error("expected at least one match")
+		}
+		if result.Summary.TotalFilesWithMatch == 0 {
+			t.Error("expected at least one file with matches")
+		}
+		if len(result.TopFiles) == 0 {
+			t.Error("expected top files to be populated")
+		}
+
+		// Verify stdout also received the JSON
+		var stdoutBuf bytes.Buffer
+		if _, err := stdoutBuf.ReadFrom(r); err != nil {
+			t.Fatalf("failed to read stdout: %v", err)
+		}
+	})
+
+	t.Run("successful scan without output file", func(t *testing.T) {
+		// Redirect stdout to capture JSON output
+		oldStdout := os.Stdout
+		r, w, _ := os.Pipe()
+		os.Stdout = w
+
+		err := runFasthogJSON(tmpDir, []string{".yml"}, defaultExcludeDirs, PatternFiles{}, "")
+
+		_ = w.Close()
+		os.Stdout = oldStdout
+
+		if err != nil {
+			t.Fatalf("runFasthogJSON failed: %v", err)
+		}
+
+		// Read and verify stdout JSON
+		var stdoutBuf bytes.Buffer
+		if _, err := stdoutBuf.ReadFrom(r); err != nil {
+			t.Fatalf("failed to read stdout: %v", err)
+		}
+
+		var result JSONResult
+		if err := json.Unmarshal(stdoutBuf.Bytes(), &result); err != nil {
+			t.Fatalf("failed to parse JSON from stdout: %v", err)
+		}
+
+		if result.Directory != tmpDir {
+			t.Errorf("expected directory %s, got %s", tmpDir, result.Directory)
+		}
+	})
+
+	t.Run("error on invalid directory", func(t *testing.T) {
+		err := runFasthogJSON("/nonexistent/directory", []string{".yml"}, defaultExcludeDirs, PatternFiles{}, "")
+		if err == nil {
+			t.Error("expected error for invalid directory")
+		}
+	})
+
+	t.Run("error on invalid pattern files", func(t *testing.T) {
+		pf := PatternFiles{Exclude: "nonexistent.regex"}
+		err := runFasthogJSON(tmpDir, []string{".yml"}, defaultExcludeDirs, pf, "")
+		if err == nil {
+			t.Error("expected error for invalid pattern files")
+		}
+	})
+
+	t.Run("top files sorted correctly", func(t *testing.T) {
+		// Create multiple files with different match counts
+		file1 := filepath.Join(tmpDir, "file1.yml")
+		if err := os.WriteFile(file1, []byte("password: secret1\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		file2 := filepath.Join(tmpDir, "file2.yml")
+		if err := os.WriteFile(file2, []byte("password: secret2\napi_key: key2\ntoken: tok2\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		outputFile := filepath.Join(tmpDir, "sorted_results.json")
+
+		// Redirect stdout
+		oldStdout := os.Stdout
+		r, w, _ := os.Pipe()
+		os.Stdout = w
+
+		err := runFasthogJSON(tmpDir, []string{".yml"}, defaultExcludeDirs, PatternFiles{}, outputFile)
+
+		_ = w.Close()
+		os.Stdout = oldStdout
+
+		if err != nil {
+			t.Fatalf("runFasthogJSON failed: %v", err)
+		}
+
+		data, err := os.ReadFile(outputFile)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var result JSONResult
+		if err := json.Unmarshal(data, &result); err != nil {
+			t.Fatal(err)
+		}
+
+		// Verify top files are sorted by count (descending)
+		for i := 1; i < len(result.TopFiles); i++ {
+			if result.TopFiles[i].Count > result.TopFiles[i-1].Count {
+				t.Errorf("top files not sorted correctly: file[%d].Count=%d > file[%d].Count=%d",
+					i, result.TopFiles[i].Count, i-1, result.TopFiles[i-1].Count)
+			}
+		}
+
+		// Clean up stdout reader
+		var stdoutBuf bytes.Buffer
+		if _, err := stdoutBuf.ReadFrom(r); err != nil {
+			t.Fatalf("failed to read stdout: %v", err)
+		}
+	})
+}
+
+func TestValidateDirectory(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	t.Run("valid directory", func(t *testing.T) {
+		err := validateDirectory(tmpDir)
+		if err != nil {
+			t.Errorf("expected no error for valid directory, got: %v", err)
+		}
+	})
+
+	t.Run("nonexistent directory", func(t *testing.T) {
+		err := validateDirectory("/nonexistent/path/to/directory")
+		if err == nil {
+			t.Error("expected error for nonexistent directory")
+		}
+		if !strings.Contains(err.Error(), "does not exist") {
+			t.Errorf("expected 'does not exist' error, got: %v", err)
+		}
+	})
+
+	t.Run("path is a file not directory", func(t *testing.T) {
+		file := filepath.Join(tmpDir, "testfile.txt")
+		if err := os.WriteFile(file, []byte("test"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		err := validateDirectory(file)
+		if err == nil {
+			t.Error("expected error for file path")
+		}
+		if !strings.Contains(err.Error(), "not a directory") {
+			t.Errorf("expected 'not a directory' error, got: %v", err)
+		}
+	})
+}
+
+func TestScanDirectoryEdgeCases(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create test structure
+	if err := os.MkdirAll(filepath.Join(tmpDir, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(tmpDir, "node_modules"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(tmpDir, "src"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// File in excluded directory
+	excludedFile := filepath.Join(tmpDir, ".git", "config")
+	if err := os.WriteFile(excludedFile, []byte("password: secret123\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// File in included directory
+	includedFile := filepath.Join(tmpDir, "src", "config.yml")
+	if err := os.WriteFile(includedFile, []byte("password: secret456\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// File with wrong extension
+	wrongExtFile := filepath.Join(tmpDir, "src", "binary.exe")
+	if err := os.WriteFile(wrongExtFile, []byte("password: secret789\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	exclude, fast, slow, err := loadEffectivePatterns(PatternFiles{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	opts := scanOptions{
+		Directory:       tmpDir,
+		Extensions:      []string{".yml"},
+		ExcludeDirs:     defaultExcludeDirs,
+		ExcludePatterns: exclude,
+		FastPatterns:    fast,
+		SlowPatterns:    slow,
+	}
+
+	result := scanDirectory(opts)
+
+	// Should only find matches in src/config.yml, not in .git/config or binary.exe
+	foundInGit := false
+	foundInSrc := false
+	foundInExe := false
+
+	for _, match := range result.Matches {
+		if strings.Contains(match.File, ".git") {
+			foundInGit = true
+		}
+		if strings.Contains(match.File, "src") && strings.HasSuffix(match.File, ".yml") {
+			foundInSrc = true
+		}
+		if strings.HasSuffix(match.File, ".exe") {
+			foundInExe = true
+		}
+	}
+
+	if foundInGit {
+		t.Error("should not find matches in excluded .git directory")
+	}
+	if !foundInSrc {
+		t.Error("should find matches in src directory")
+	}
+	if foundInExe {
+		t.Error("should not scan files with wrong extension")
+	}
+}
+
+func TestScanDirectoryWithCallbacks(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create test files
+	file1 := filepath.Join(tmpDir, "file1.yml")
+	if err := os.WriteFile(file1, []byte("password: secret123\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	file2 := filepath.Join(tmpDir, "file2.yml")
+	if err := os.WriteFile(file2, []byte("api_key: sk_test_abc\ntoken: xyz789\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	exclude, fast, slow, err := loadEffectivePatterns(PatternFiles{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("OnCurrentFile callback is called", func(t *testing.T) {
+		callbackCount := 0
+		var lastFile string
+		var lastIndex, lastTotal int
+
+		opts := scanOptions{
+			Directory:       tmpDir,
+			Extensions:      []string{".yml"},
+			ExcludeDirs:     defaultExcludeDirs,
+			ExcludePatterns: exclude,
+			FastPatterns:    fast,
+			SlowPatterns:    slow,
+			OnCurrentFile: func(file string, index, total int) {
+				callbackCount++
+				lastFile = file
+				lastIndex = index
+				lastTotal = total
+			},
+		}
+
+		result := scanDirectory(opts)
+
+		if callbackCount != 2 {
+			t.Errorf("expected OnCurrentFile to be called 2 times, got %d", callbackCount)
+		}
+		if lastTotal != 2 {
+			t.Errorf("expected total files to be 2, got %d", lastTotal)
+		}
+		if lastIndex != 1 {
+			t.Errorf("expected last index to be 1, got %d", lastIndex)
+		}
+		if lastFile == "" {
+			t.Error("expected lastFile to be set")
+		}
+		if len(result.Matches) == 0 {
+			t.Error("expected to find matches")
+		}
+	})
+
+	t.Run("OnMatch callback is called", func(t *testing.T) {
+		var mu sync.Mutex
+		matchCount := 0
+		var matchedFiles []string
+
+		opts := scanOptions{
+			Directory:       tmpDir,
+			Extensions:      []string{".yml"},
+			ExcludeDirs:     defaultExcludeDirs,
+			ExcludePatterns: exclude,
+			FastPatterns:    fast,
+			SlowPatterns:    slow,
+			OnMatch: func(file string, lineNo int, line, match string) {
+				mu.Lock()
+				matchCount++
+				matchedFiles = append(matchedFiles, file)
+				mu.Unlock()
+			},
+		}
+
+		result := scanDirectory(opts)
+
+		mu.Lock()
+		defer mu.Unlock()
+		if matchCount == 0 {
+			t.Error("expected OnMatch to be called at least once")
+		}
+		if matchCount != len(result.Matches) {
+			t.Errorf("expected OnMatch count (%d) to equal result matches (%d)", matchCount, len(result.Matches))
+		}
+		if len(matchedFiles) == 0 {
+			t.Error("expected matchedFiles to be populated")
+		}
+	})
+
+	t.Run("both callbacks work together", func(t *testing.T) {
+		var mu sync.Mutex
+		fileCallbackCount := 0
+		matchCallbackCount := 0
+
+		opts := scanOptions{
+			Directory:       tmpDir,
+			Extensions:      []string{".yml"},
+			ExcludeDirs:     defaultExcludeDirs,
+			ExcludePatterns: exclude,
+			FastPatterns:    fast,
+			SlowPatterns:    slow,
+			OnCurrentFile: func(file string, index, total int) {
+				mu.Lock()
+				fileCallbackCount++
+				mu.Unlock()
+			},
+			OnMatch: func(file string, lineNo int, line, match string) {
+				mu.Lock()
+				matchCallbackCount++
+				mu.Unlock()
+			},
+		}
+
+		result := scanDirectory(opts)
+
+		mu.Lock()
+		defer mu.Unlock()
+		if fileCallbackCount != 2 {
+			t.Errorf("expected file callback count 2, got %d", fileCallbackCount)
+		}
+		if matchCallbackCount == 0 {
+			t.Error("expected match callback to be called")
+		}
+		if len(result.Matches) == 0 {
+			t.Error("expected matches in result")
+		}
+	})
+}
+
+func TestScanDirectoryShortLines(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create file with very short lines (should be skipped)
+	shortFile := filepath.Join(tmpDir, "short.yml")
+	content := "pwd: x\n" + // 6 chars - should be skipped
+		"key: y\n" + // 6 chars - should be skipped
+		"password: verylongsecret123\n" // Long enough to scan
+	if err := os.WriteFile(shortFile, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	exclude, fast, slow, err := loadEffectivePatterns(PatternFiles{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	opts := scanOptions{
+		Directory:       tmpDir,
+		Extensions:      []string{".yml"},
+		ExcludeDirs:     defaultExcludeDirs,
+		ExcludePatterns: exclude,
+		FastPatterns:    fast,
+		SlowPatterns:    slow,
+	}
+
+	result := scanDirectory(opts)
+
+	// Should only find the long line with "password"
+	if len(result.Matches) == 0 {
+		t.Error("expected to find at least one match")
+	}
+
+	// Verify short lines were skipped
+	for _, match := range result.Matches {
+		if len(match.LineSnippet) <= 8 {
+			t.Errorf("found match in short line: %s", match.LineSnippet)
+		}
 	}
 }

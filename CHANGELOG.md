@@ -52,6 +52,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ANSI color-coded terminal output
 - Top files report for large scans
 
-[Unreleased]: https://github.com/mattbordenet/passhog/compare/v1.0.0...HEAD
-[1.0.0]: https://github.com/mattbordenet/passhog/releases/tag/v1.0.0
+[Unreleased]: https://github.com/bordenet/secrets-in-source/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/bordenet/secrets-in-source/releases/tag/v1.0.0
 
