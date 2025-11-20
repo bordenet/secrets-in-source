@@ -95,7 +95,9 @@ func parseTrufflehogFile(filename string) []TrufflehogResult {
 	if err != nil {
 		log.Fatalf("Failed to open file: %v", err)
 	}
-	defer file.Close()
+	defer func() {
+		_ = file.Close() // Best effort close
+	}()
 
 	scanner := bufio.NewScanner(file)
 	var results []TrufflehogResult
@@ -131,7 +133,9 @@ func parsePasshogFile(filename string) []PasshogResult {
 	if err != nil {
 		log.Fatalf("Failed to open file: %v", err)
 	}
-	defer file.Close()
+	defer func() {
+		_ = file.Close() // Best effort close
+	}()
 
 	scanner := bufio.NewScanner(file)
 	var results []PasshogResult
@@ -291,7 +295,7 @@ func printTable(trufflehogResults []TrufflehogResult, passhogResults []PasshogRe
 			row := fmt.Sprintf("%s/%s, Line: %d, Secret: %s", pathStyle.Render(relativePath), fileNameStyle.Render(fileName), result.SourceMetadata.Data.Filesystem.Line, secretStyle.Render(truncate(firstLine(result.Raw), 100)))
 			rows = append(rows, row)
 		}
-	} else if passhogResults != nil {
+	} else {
 		for _, result := range passhogResults {
 			relativePath, fileName := splitPath(result.File)
 			row := fmt.Sprintf("%s/%s, Line: %d, Secret: %s", pathStyle.Render(relativePath), fileNameStyle.Render(fileName), result.Line, secretStyle.Render(truncate(firstLine(result.Secret), 100)))
@@ -301,28 +305,6 @@ func printTable(trufflehogResults []TrufflehogResult, passhogResults []PasshogRe
 
 	table := tableStyle.Render(strings.Join(rows, "\n"))
 	fmt.Println(table)
-}
-
-func listSecretsByFile(trufflehogResults []TrufflehogResult, passhogResults []PasshogResult) {
-	if trufflehogResults != nil {
-		fileCount := make(map[string]int)
-		for _, result := range trufflehogResults {
-			fileCount[result.SourceMetadata.Data.Filesystem.File]++
-		}
-		printFileCount(fileCount)
-	} else if passhogResults != nil {
-		fileCount := make(map[string]int)
-		for _, result := range passhogResults {
-			fileCount[result.File]++
-		}
-		printFileCount(fileCount)
-	}
-}
-
-func printFileCount(fileCount map[string]int) {
-	for file, count := range fileCount {
-		fmt.Printf("%s, Count: %d\n", fileNameStyle.Render(file), count)
-	}
 }
 
 func printCommonMatches(commonMatches map[string][]int) {

@@ -1,5 +1,10 @@
 # passhog
 
+[![CI](https://github.com/bordenet/secrets-in-source/actions/workflows/ci.yml/badge.svg)](https://github.com/bordenet/secrets-in-source/actions/workflows/ci.yml)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/bordenet/secrets-in-source)](https://go.dev/)
+[![License](https://img.shields.io/github/license/bordenet/secrets-in-source)](./LICENSE)
+[![Go Report Card](https://goreportcard.com/badge/github.com/bordenet/secrets-in-source)](https://goreportcard.com/report/github.com/bordenet/secrets-in-source)
+
 A concurrent secrets scanner for source code repositories. Passhog detects hardcoded credentials, API keys, and other sensitive information using configurable regex patterns.
 
 ## Features
@@ -20,8 +25,8 @@ A concurrent secrets scanner for source code repositories. Passhog detects hardc
 ### Install from source
 
 ```bash
-git clone https://github.com/mattbordenet/passhog.git
-cd passhog
+git clone https://github.com/bordenet/secrets-in-source.git
+cd secrets-in-source
 go install
 ```
 
@@ -30,8 +35,8 @@ Ensure `~/go/bin` is in your `PATH` to run the installed binary.
 ### Build from source
 
 ```bash
-git clone https://github.com/mattbordenet/passhog.git
-cd passhog
+git clone https://github.com/bordenet/secrets-in-source.git
+cd secrets-in-source
 make build
 ```
 

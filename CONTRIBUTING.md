@@ -20,8 +20,8 @@ Thank you for your interest in contributing to passhog. This document provides g
 
 ```bash
 # Clone the repository
-git clone https://github.com/mattbordenet/passhog.git
-cd passhog
+git clone https://github.com/bordenet/secrets-in-source.git
+cd secrets-in-source
 
 # Install dependencies
 go mod download

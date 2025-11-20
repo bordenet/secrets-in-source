@@ -1,4 +1,4 @@
-module github.com/mattbordenet/passhog
+module github.com/bordenet/secrets-in-source
 
 go 1.23.3
 
