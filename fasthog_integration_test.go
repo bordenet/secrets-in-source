@@ -17,11 +17,11 @@ func TestIntegrationScanDirectory(t *testing.T) {
 	t.Run("scan test directory", func(t *testing.T) {
 		// Use the test directory which contains known positives and false positives
 		testDir := "test"
-		outputFile := filepath.Join(t.TempDir(), "results.txt")
+		outputFile := filepath.Join(t.TempDir(), "results.json")
 
-		err := runFasthog(testDir, defaultExtensions, nil, PatternFiles{}, outputFile)
+		err := runFasthogJSON(testDir, defaultExtensions, nil, PatternFiles{}, outputFile)
 		if err != nil {
-			t.Fatalf("runFasthog failed: %v", err)
+			t.Fatalf("runFasthogJSON failed: %v", err)
 		}
 
 		// Verify output file was created
@@ -48,12 +48,12 @@ func TestIntegrationScanDirectory(t *testing.T) {
 
 	t.Run("scan with specific extensions", func(t *testing.T) {
 		testDir := "test"
-		outputFile := filepath.Join(t.TempDir(), "results.txt")
+		outputFile := filepath.Join(t.TempDir(), "results.json")
 		extensions := []string{".txt"}
 
-		err := runFasthog(testDir, extensions, nil, PatternFiles{}, outputFile)
+		err := runFasthogJSON(testDir, extensions, nil, PatternFiles{}, outputFile)
 		if err != nil {
-			t.Fatalf("runFasthog failed: %v", err)
+			t.Fatalf("runFasthogJSON failed: %v", err)
 		}
 
 		content, err := os.ReadFile(outputFile)
@@ -70,11 +70,11 @@ func TestIntegrationScanDirectory(t *testing.T) {
 
 	t.Run("scan empty directory", func(t *testing.T) {
 		emptyDir := t.TempDir()
-		outputFile := filepath.Join(t.TempDir(), "results.txt")
+		outputFile := filepath.Join(t.TempDir(), "results.json")
 
-		err := runFasthog(emptyDir, defaultExtensions, nil, PatternFiles{}, outputFile)
+		err := runFasthogJSON(emptyDir, defaultExtensions, nil, PatternFiles{}, outputFile)
 		if err != nil {
-			t.Fatalf("runFasthog failed: %v", err)
+			t.Fatalf("runFasthogJSON failed: %v", err)
 		}
 
 		content, err := os.ReadFile(outputFile)
@@ -82,9 +82,10 @@ func TestIntegrationScanDirectory(t *testing.T) {
 			t.Fatalf("failed to read output file: %v", err)
 		}
 
-		// Empty directory should produce empty results
-		if len(content) > 0 {
-			t.Errorf("expected empty output for empty directory, got: %s", string(content))
+		// Empty directory should produce minimal JSON output
+		output := string(content)
+		if !strings.Contains(output, "\"total_matches\": 0") {
+			t.Errorf("expected JSON with zero matches for empty directory, got: %s", output)
 		}
 	})
 
@@ -99,10 +100,10 @@ func TestIntegrationScanDirectory(t *testing.T) {
 			t.Fatalf("failed to create test file: %v", err)
 		}
 
-		outputFile := filepath.Join(t.TempDir(), "results.txt")
-		err = runFasthog(tmpDir, []string{".py"}, nil, PatternFiles{}, outputFile)
+		outputFile := filepath.Join(t.TempDir(), "results.json")
+		err = runFasthogJSON(tmpDir, []string{".py"}, nil, PatternFiles{}, outputFile)
 		if err != nil {
-			t.Fatalf("runFasthog failed: %v", err)
+			t.Fatalf("runFasthogJSON failed: %v", err)
 		}
 
 		content, err := os.ReadFile(outputFile)
@@ -120,7 +121,7 @@ func TestIntegrationScanDirectory(t *testing.T) {
 	})
 
 	t.Run("nonexistent directory", func(t *testing.T) {
-		err := runFasthog("/nonexistent/directory", defaultExtensions, nil, PatternFiles{}, "")
+		err := runFasthogJSON("/nonexistent/directory", defaultExtensions, nil, PatternFiles{}, "")
 		if err == nil {
 			t.Error("expected error for nonexistent directory")
 		}
@@ -148,10 +149,10 @@ func TestIntegrationExcludeDirectories(t *testing.T) {
 		t.Fatalf("failed to create test file: %v", err)
 	}
 
-	outputFile := filepath.Join(t.TempDir(), "results.txt")
-	err = runFasthog(tmpDir, defaultExtensions, nil, PatternFiles{}, outputFile)
+	outputFile := filepath.Join(t.TempDir(), "results.json")
+	err = runFasthogJSON(tmpDir, defaultExtensions, nil, PatternFiles{}, outputFile)
 	if err != nil {
-		t.Fatalf("runFasthog failed: %v", err)
+		t.Fatalf("runFasthogJSON failed: %v", err)
 	}
 
 	content, err := os.ReadFile(outputFile)
@@ -191,10 +192,10 @@ func TestIntegrationTopFilesReport(t *testing.T) {
 		}
 	}
 
-	outputFile := filepath.Join(t.TempDir(), "results.txt")
-	err := runFasthog(tmpDir, []string{".py"}, nil, PatternFiles{}, outputFile)
+	outputFile := filepath.Join(t.TempDir(), "results.json")
+	err := runFasthogJSON(tmpDir, []string{".py"}, nil, PatternFiles{}, outputFile)
 	if err != nil {
-		t.Fatalf("runFasthog failed: %v", err)
+		t.Fatalf("runFasthogJSON failed: %v", err)
 	}
 
 	// Verify output file was created and contains results
@@ -214,7 +215,7 @@ func TestIntegrationTopFilesReport(t *testing.T) {
 	}
 }
 
-// TestIntegrationNoOutputFile verifies scanning works without output file.
+// TestIntegrationNoOutputFile verifies scanning works without output file (stdout).
 func TestIntegrationNoOutputFile(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
@@ -227,9 +228,9 @@ func TestIntegrationNoOutputFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Run without output file (empty string)
-	err = runFasthog(tmpDir, []string{".py"}, nil, PatternFiles{}, "")
+	// Run without output file (empty string) - JSON goes to stdout
+	err = runFasthogJSON(tmpDir, []string{".py"}, nil, PatternFiles{}, "")
 	if err != nil {
-		t.Fatalf("runFasthog failed: %v", err)
+		t.Fatalf("runFasthogJSON failed: %v", err)
 	}
 }
