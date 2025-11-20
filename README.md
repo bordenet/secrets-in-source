@@ -1,6 +1,7 @@
 # passhog
 
 [![CI](https://github.com/bordenet/secrets-in-source/actions/workflows/ci.yml/badge.svg)](https://github.com/bordenet/secrets-in-source/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/bordenet/secrets-in-source/branch/main/graph/badge.svg)](https://codecov.io/gh/bordenet/secrets-in-source)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/bordenet/secrets-in-source)](https://go.dev/)
 [![License](https://img.shields.io/github/license/bordenet/secrets-in-source)](./LICENSE)
 [![Go Report Card](https://goreportcard.com/badge/github.com/bordenet/secrets-in-source)](https://goreportcard.com/report/github.com/bordenet/secrets-in-source)
@@ -92,6 +93,24 @@ passhog ~/terraform --types=tf,yml,yaml,env
 
 # Scan entire codebase with default extensions
 passhog ~/repositories/myproject
+```
+
+### Example Output
+
+```
+Directory: /path/to/repository
+Extensions: [.py .js .yml .yaml .env]
+Output: results.txt
+Current file: config/database.yml  Matches: 3
+███████████████████████████████████ 100%
+
+Results:
+config/database.yml:0012 password: "mySecretPassword123"
+src/api/keys.js:0045 const API_KEY = "sk_live_1234567890abcdef"
+.env:0003 DATABASE_URL=postgres://user:pass@localhost/db
+
+Completed in 1.2s: 3 matches across 3 of 127 files
+Results written to results.txt
 ```
 
 ## Architecture

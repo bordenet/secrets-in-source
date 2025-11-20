@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"testing/fstest"
 
 	"github.com/charmbracelet/bubbles/progress"
 	tea "github.com/charmbracelet/bubbletea"
@@ -196,6 +197,22 @@ func TestLoadRegexes(t *testing.T) {
 		_, err := loadRegexes(regexFS, "nonexistent.regex")
 		if err == nil {
 			t.Fatal("expected error for nonexistent file")
+		}
+	})
+
+	t.Run("invalid regex pattern", func(t *testing.T) {
+		// Create a test filesystem with invalid regex
+		testFS := fstest.MapFS{
+			"invalid.regex": &fstest.MapFile{
+				Data: []byte("(?P<invalid"),
+			},
+		}
+		_, err := loadRegexes(testFS, "invalid.regex")
+		if err == nil {
+			t.Error("expected error for invalid regex pattern")
+		}
+		if !strings.Contains(err.Error(), "failed to compile") {
+			t.Errorf("expected compile error, got: %v", err)
 		}
 	})
 }
@@ -507,6 +524,38 @@ func TestLargeFileScanning(t *testing.T) {
 	}
 	if !strings.Contains(string(resultContent), "0501") {
 		t.Error("expected to find line number 501")
+	}
+}
+
+// TestLoadRegexesEmptyFile verifies handling of empty regex files.
+func TestLoadRegexesEmptyFile(t *testing.T) {
+	testFS := fstest.MapFS{
+		"empty.regex": &fstest.MapFile{
+			Data: []byte(""),
+		},
+	}
+	re, err := loadRegexes(testFS, "empty.regex")
+	if err != nil {
+		t.Fatalf("unexpected error for empty file: %v", err)
+	}
+	if re == nil {
+		t.Fatal("expected non-nil regex for empty file")
+	}
+}
+
+// TestLoadRegexesCommentOnly verifies handling of comment-only files.
+func TestLoadRegexesCommentOnly(t *testing.T) {
+	testFS := fstest.MapFS{
+		"comments.regex": &fstest.MapFile{
+			Data: []byte("# This is a comment\n# Another comment\n"),
+		},
+	}
+	re, err := loadRegexes(testFS, "comments.regex")
+	if err != nil {
+		t.Fatalf("unexpected error for comment-only file: %v", err)
+	}
+	if re == nil {
+		t.Fatal("expected non-nil regex for comment-only file")
 	}
 }
 
