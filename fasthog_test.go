@@ -413,8 +413,8 @@ func TestEdgeCases(t *testing.T) {
 	})
 }
 
-// TestRunPasshogValidation tests input validation.
-func TestRunPasshogValidation(t *testing.T) {
+// TestRunFasthogValidation tests input validation.
+func TestRunFasthogValidation(t *testing.T) {
 	t.Run("file instead of directory", func(t *testing.T) {
 		tmpFile := filepath.Join(t.TempDir(), "file.txt")
 		err := os.WriteFile(tmpFile, []byte("test"), 0644)
@@ -422,7 +422,7 @@ func TestRunPasshogValidation(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		err = runPasshog(tmpFile, defaultExtensions, nil, PatternFiles{}, "")
+		err = runFasthog(tmpFile, defaultExtensions, nil, PatternFiles{}, "")
 		if err == nil {
 			t.Error("expected error when passing file instead of directory")
 		}
@@ -510,9 +510,9 @@ func TestLargeFileScanning(t *testing.T) {
 	}
 
 	outputFile := filepath.Join(t.TempDir(), "results.txt")
-	err = runPasshog(tmpDir, []string{".py"}, nil, PatternFiles{}, outputFile)
+	err = runFasthog(tmpDir, []string{".py"}, nil, PatternFiles{}, outputFile)
 	if err != nil {
-		t.Fatalf("runPasshog failed: %v", err)
+		t.Fatalf("runFasthog failed: %v", err)
 	}
 
 	resultContent, err := os.ReadFile(outputFile)
@@ -580,9 +580,9 @@ PASSWORD="secret"
 	}
 
 	outputFile := filepath.Join(t.TempDir(), "results.txt")
-	err = runPasshog(tmpDir, []string{".py"}, nil, PatternFiles{}, outputFile)
+	err = runFasthog(tmpDir, []string{".py"}, nil, PatternFiles{}, outputFile)
 	if err != nil {
-		t.Fatalf("runPasshog failed: %v", err)
+		t.Fatalf("runFasthog failed: %v", err)
 	}
 
 	resultContent, err := os.ReadFile(outputFile)
@@ -637,14 +637,14 @@ func TestParseOutputFormat(t *testing.T) {
 func TestBuildUsageIncludesKeyFlags(t *testing.T) {
 	usage := buildUsage()
 
-	for _, token := range []string{"Usage: passhog", "--types", "--output", "--format", "--json", "--config"} {
+	for _, token := range []string{"Usage: fasthog", "--types", "--output", "--format", "--json", "--config"} {
 		if !strings.Contains(usage, token) {
 			t.Errorf("usage text missing %q", token)
 		}
 	}
 }
 
-func TestRunPasshogJSONWritesValidJSON(t *testing.T) {
+func TestRunFasthogJSONWritesValidJSON(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	testFile := filepath.Join(tmpDir, "config.py")
@@ -655,8 +655,8 @@ func TestRunPasshogJSONWritesValidJSON(t *testing.T) {
 
 	outputFile := filepath.Join(tmpDir, "results.json")
 
-	if err := runPasshogJSON(tmpDir, []string{".py"}, nil, PatternFiles{}, outputFile); err != nil {
-		t.Fatalf("runPasshogJSON failed: %v", err)
+	if err := runFasthogJSON(tmpDir, []string{".py"}, nil, PatternFiles{}, outputFile); err != nil {
+		t.Fatalf("runFasthogJSON failed: %v", err)
 	}
 
 	data, err := os.ReadFile(outputFile)
@@ -709,7 +709,7 @@ func TestRunPasshogJSONWritesValidJSON(t *testing.T) {
 }
 func TestLoadConfigParsesExpectedFields(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "passhog.yaml")
+	path := filepath.Join(dir, "fasthog.yaml")
 
 	configYAML := `
 directory: ./src
@@ -808,23 +808,68 @@ func TestSplitKeyValue(t *testing.T) {
 func TestDetermineExtensionsPrecedence(t *testing.T) {
 	cfg := Config{Extensions: []string{".tf", ".yaml"}}
 
-	// CLI flag should win over config and defaults.
-	exts := determineExtensions("py,go", true, cfg)
-	if !slices.Equal(exts, []string{".py", ".go"}) {
-		t.Errorf("determineExtensions CLI precedence: got %v", exts)
-	}
+	t.Run("CLI flag wins over config and defaults", func(t *testing.T) {
+		exts := determineExtensions("py,go", true, cfg)
+		if !slices.Equal(exts, []string{".py", ".go"}) {
+			t.Errorf("determineExtensions CLI precedence: got %v", exts)
+		}
+	})
 
-	// Config should be used when flag is not changed.
-	exts = determineExtensions("", false, cfg)
-	if !slices.Equal(exts, cfg.Extensions) {
-		t.Errorf("determineExtensions config precedence: got %v, want %v", exts, cfg.Extensions)
-	}
+	t.Run("config used when flag not changed", func(t *testing.T) {
+		exts := determineExtensions("", false, cfg)
+		if !slices.Equal(exts, cfg.Extensions) {
+			t.Errorf("determineExtensions config precedence: got %v, want %v", exts, cfg.Extensions)
+		}
+	})
 
-	// Defaults should be used when neither flag nor config provides extensions.
-	exts = determineExtensions("", false, Config{})
-	if !slices.Equal(exts, defaultExtensions) {
-		t.Errorf("determineExtensions default precedence: got %v, want %v", exts, defaultExtensions)
-	}
+	t.Run("defaults used when neither flag nor config provides extensions", func(t *testing.T) {
+		exts := determineExtensions("", false, Config{})
+		if !slices.Equal(exts, defaultExtensions) {
+			t.Errorf("determineExtensions default precedence: got %v, want %v", exts, defaultExtensions)
+		}
+	})
+
+	t.Run("all whitespace input falls through to config", func(t *testing.T) {
+		exts := determineExtensions("  ,  ,  ", true, cfg)
+		if !slices.Equal(exts, cfg.Extensions) {
+			t.Errorf("expected config extensions for all-whitespace input, got %v", exts)
+		}
+	})
+
+	t.Run("all whitespace input with no config falls through to defaults", func(t *testing.T) {
+		exts := determineExtensions("  ,  ,  ", true, Config{})
+		if !slices.Equal(exts, defaultExtensions) {
+			t.Errorf("expected defaults for all-whitespace input with no config, got %v", exts)
+		}
+	})
+
+	t.Run("trailing comma is handled gracefully", func(t *testing.T) {
+		exts := determineExtensions("py,go,", true, cfg)
+		if !slices.Equal(exts, []string{".py", ".go"}) {
+			t.Errorf("expected [.py .go] for trailing comma, got %v", exts)
+		}
+	})
+
+	t.Run("leading comma is handled gracefully", func(t *testing.T) {
+		exts := determineExtensions(",py,go", true, cfg)
+		if !slices.Equal(exts, []string{".py", ".go"}) {
+			t.Errorf("expected [.py .go] for leading comma, got %v", exts)
+		}
+	})
+
+	t.Run("mixed valid and whitespace", func(t *testing.T) {
+		exts := determineExtensions("py,  , go,  ", true, cfg)
+		if !slices.Equal(exts, []string{".py", ".go"}) {
+			t.Errorf("expected [.py .go] for mixed valid/whitespace, got %v", exts)
+		}
+	})
+
+	t.Run("dot prefix normalization", func(t *testing.T) {
+		exts := determineExtensions(".py,go,.ts,js", true, cfg)
+		if !slices.Equal(exts, []string{".py", ".go", ".ts", ".js"}) {
+			t.Errorf("expected normalized extensions, got %v", exts)
+		}
+	})
 }
 
 func TestDetermineOutputFormatPrecedence(t *testing.T) {
@@ -881,5 +926,32 @@ func TestDetermineOutputPathPrecedence(t *testing.T) {
 	got = determineOutputPath("cli_results.txt", true, cfg)
 	if got != "cli_results.txt" {
 		t.Errorf("expected CLI output path, got %q", got)
+	}
+}
+
+func TestLoadEffectivePatternsWithDefaults(t *testing.T) {
+	// Test that loadEffectivePatterns(PatternFiles{}) loads default embedded patterns.
+	exclude, fast, slow, err := loadEffectivePatterns(PatternFiles{})
+	if err != nil {
+		t.Fatalf("loadEffectivePatterns with empty PatternFiles failed: %v", err)
+	}
+
+	if exclude == nil {
+		t.Error("expected non-nil exclude patterns")
+	}
+	if fast == nil {
+		t.Error("expected non-nil fast patterns")
+	}
+	if slow == nil {
+		t.Error("expected non-nil slow patterns")
+	}
+
+	// Verify that the patterns actually work by testing against known positives.
+	testLine := "password = 'MySecretPassword123'"
+	if !fast.MatchString(testLine) {
+		t.Error("default fast patterns should match known secret line")
+	}
+	if slow.FindString(testLine) == "" {
+		t.Error("default slow patterns should match known secret line")
 	}
 }

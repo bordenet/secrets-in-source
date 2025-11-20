@@ -155,7 +155,7 @@ api_key = "sk_test_abc123"
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		outputFile := filepath.Join(b.TempDir(), "bench_output.txt")
-		err := runPasshog(tmpDir, []string{".py"}, nil, PatternFiles{}, outputFile)
+		err := runFasthog(tmpDir, []string{".py"}, nil, PatternFiles{}, outputFile)
 		if err != nil {
 			b.Fatal(err)
 		}

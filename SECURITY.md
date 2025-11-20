@@ -32,16 +32,16 @@ Instead, please email the maintainers directly with:
 
 ## Security Best Practices
 
-When using passhog:
+When using fasthog:
 
 1. **Review findings carefully**: Not all detected patterns are actual secrets
 2. **Secure your output**: Results files may contain sensitive information
 3. **Use appropriate permissions**: Ensure scan results are only accessible to authorized users
-4. **Regular updates**: Keep passhog updated to benefit from the latest pattern improvements
+4. **Regular updates**: Keep fasthog updated to benefit from the latest pattern improvements
 
 ## Known Limitations
 
-- Passhog performs pattern-based detection and may produce false positives
+- Fasthog performs pattern-based detection and may produce false positives
 - Encrypted or obfuscated secrets may not be detected
 - Compressed archives (.zip, .tar.gz) are not currently scanned
 - Very large files (>100MB) may impact performance
@@ -50,7 +50,7 @@ When using passhog:
 
 This security policy applies to:
 
-- The passhog codebase
+- The fasthog codebase
 - Pattern definition files (*.regex)
 - Documentation and examples
 

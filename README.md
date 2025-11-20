@@ -1,4 +1,4 @@
-# passhog
+# fasthog
 
 [![CI](https://github.com/bordenet/secrets-in-source/actions/workflows/ci.yml/badge.svg)](https://github.com/bordenet/secrets-in-source/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/bordenet/secrets-in-source/branch/main/graph/badge.svg)](https://codecov.io/gh/bordenet/secrets-in-source)
@@ -6,7 +6,7 @@
 [![License](https://img.shields.io/github/license/bordenet/secrets-in-source)](./LICENSE)
 [![Go Report Card](https://goreportcard.com/badge/github.com/bordenet/secrets-in-source)](https://goreportcard.com/report/github.com/bordenet/secrets-in-source)
 
-A concurrent secrets scanner for source code repositories. Passhog detects hardcoded credentials, API keys, and other sensitive information using configurable regex patterns.
+A concurrent secrets scanner for source code repositories. Fasthog detects hardcoded credentials, API keys, and other sensitive information using configurable regex patterns.
 
 ## Features
 
@@ -49,13 +49,13 @@ Build for different platforms:
 
 ```bash
 # Windows
-GOOS=windows GOARCH=amd64 go build -o passhog.exe
+GOOS=windows GOARCH=amd64 go build -o fasthog.exe
 
 # Linux
-GOOS=linux GOARCH=amd64 go build -o passhog
+GOOS=linux GOARCH=amd64 go build -o fasthog
 
 # macOS (Apple Silicon)
-GOOS=darwin GOARCH=arm64 go build -o passhog
+GOOS=darwin GOARCH=arm64 go build -o fasthog
 ```
 
 ## Usage
@@ -64,47 +64,47 @@ GOOS=darwin GOARCH=arm64 go build -o passhog
 
 ```bash
 # Scan a directory
-passhog /path/to/repository
+fasthog /path/to/repository
 
 # Scan specific file types
-passhog /path/to/repository --types=py,js,go
+fasthog /path/to/repository --types=py,js,go
 
 # Save results to file
-passhog /path/to/repository --output=results.txt
+fasthog /path/to/repository --output=results.txt
 
 # Combine options
-passhog /path/to/repository --types=yml,yaml,env,tf --output=results.txt
+fasthog /path/to/repository --types=yml,yaml,env,tf --output=results.txt
 ```
 
 ### Running from source
 
 ```bash
-go run passhog.go /path/to/repository
+go run fasthog.go /path/to/repository
 ```
 
 ### Examples
 
 ```bash
 # Scan Python and C# files
-passhog ~/projects/myapp --types=py,cs --output=secrets_report.txt
+fasthog ~/projects/myapp --types=py,cs --output=secrets_report.txt
 
 # Scan infrastructure files
-passhog ~/terraform --types=tf,yml,yaml,env
+fasthog ~/terraform --types=tf,yml,yaml,env
 
 # Scan entire codebase with default extensions
-passhog ~/repositories/myproject
+fasthog ~/repositories/myproject
 ```
 
 ### JSON Output
 
-Passhog can produce machine-readable JSON output suitable for CI pipelines and tooling.
+Fasthog can produce machine-readable JSON output suitable for CI pipelines and tooling.
 
 ```bash
 # Write JSON results to a file
-passhog /path/to/repository --format=json --output=results.json
+fasthog /path/to/repository --format=json --output=results.json
 
 # Equivalent shorthand
-passhog /path/to/repository --json --output=results.json
+fasthog /path/to/repository --json --output=results.json
 ```
 
 The JSON structure includes fields for the scanned directory, extensions, matches, a summary, and top files by match count. A truncated example:
@@ -123,9 +123,9 @@ The JSON structure includes fields for the scanned directory, extensions, matche
 
 ### Configuration File
 
-Passhog supports an optional configuration file in the current working directory named `passhog.yaml`, or a custom path supplied via `--config`.
+Fasthog supports an optional configuration file in the current working directory named `fasthog.yaml`, or a custom path supplied via `--config`.
 
-Example `passhog.yaml`:
+Example `fasthog.yaml`:
 
 ```yaml
 # Directory is optional; the CLI argument remains the primary source
@@ -158,7 +158,7 @@ Precedence rules:
 Use `--config` to select a specific configuration file:
 
 ```bash
-passhog /path/to/repository --config=/path/to/passhog.yaml
+fasthog /path/to/repository --config=/path/to/fasthog.yaml
 ```
 
 ### Example Output
@@ -183,7 +183,7 @@ Results written to results.txt
 
 ### Scanning Process
 
-Passhog uses a two-stage detection pipeline:
+Fasthog uses a two-stage detection pipeline:
 
 1. **Fast screening**: Initial pass with lightweight patterns (`fast_patterns.regex`)
 2. **Strict validation**: Thorough analysis with comprehensive patterns (`strict_patterns.regex`)
@@ -198,7 +198,7 @@ Passhog uses a two-stage detection pipeline:
 
 ## Pattern Files
 
-Passhog uses multiple regex pattern files for flexible detection:
+Fasthog uses multiple regex pattern files for flexible detection:
 
 | File | Purpose |
 |------|---------|
@@ -255,15 +255,15 @@ A gap analysis tool is provided in the `test` directory to compare results with 
 # Generate TruffleHog results
 trufflehog filesystem ~/repositories --json --concurrency=36 > trufflehog.json
 
-# Generate passhog results
-passhog ~/repositories --output=passhog.txt
+# Generate fasthog results
+fasthog ~/repositories --output=fasthog.txt
 
 # Compare results
 cd test
-go run secrets_gap_analysis.go -t ../trufflehog.json -p ../passhog.txt
+go run secrets_gap_analysis.go -t ../trufflehog.json -p ../fasthog.txt
 ```
 
-**Note**: Passhog does not currently parse compressed archives (.zip, .tar.gz, etc.).
+**Note**: Fasthog does not currently parse compressed archives (.zip, .tar.gz, etc.).
 
 ## Development
 
@@ -290,7 +290,7 @@ make check
 
 ```
 .
-├── passhog.go              # Main application
+├── fasthog.go              # Main application
 ├── *_test.go               # Test files
 ├── *.regex                 # Pattern definition files
 ├── test/

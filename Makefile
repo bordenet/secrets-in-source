@@ -3,7 +3,7 @@
 # Default target
 help:
 	@echo "Available targets:"
-	@echo "  build          - Build the passhog binary"
+	@echo "  build          - Build the fasthog binary"
 	@echo "  test           - Run tests"
 	@echo "  test-verbose   - Run tests with verbose output"
 	@echo "  test-coverage  - Run tests with coverage report"
@@ -12,12 +12,12 @@ help:
 	@echo "  fmt            - Format code"
 	@echo "  vet            - Run go vet"
 	@echo "  clean          - Remove build artifacts"
-	@echo "  install        - Install passhog to GOPATH/bin"
-	@echo "  run            - Run passhog (requires DIR variable)"
+	@echo "  install        - Install fasthog to GOPATH/bin"
+	@echo "  run            - Run fasthog (requires DIR variable)"
 
 # Build the binary
 build:
-	go build -o passhog .
+	go build -o fasthog .
 
 # Run tests
 test:
@@ -53,16 +53,16 @@ vet:
 
 # Clean build artifacts
 clean:
-	rm -f passhog passhog.exe
+	rm -f fasthog fasthog.exe
 	rm -f coverage.out coverage.html
 	rm -f *.test
-	rm -f passhog_results*.txt
+	rm -f fasthog_results*.txt
 
 # Install to GOPATH/bin
 install:
 	go install .
 
-# Run passhog (example: make run DIR=/path/to/scan)
+# Run fasthog (example: make run DIR=/path/to/scan)
 run:
 	@if [ -z "$(DIR)" ]; then \
 		echo "Usage: make run DIR=/path/to/scan"; \

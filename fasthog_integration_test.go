@@ -19,9 +19,9 @@ func TestIntegrationScanDirectory(t *testing.T) {
 		testDir := "test"
 		outputFile := filepath.Join(t.TempDir(), "results.txt")
 
-		err := runPasshog(testDir, defaultExtensions, nil, PatternFiles{}, outputFile)
+		err := runFasthog(testDir, defaultExtensions, nil, PatternFiles{}, outputFile)
 		if err != nil {
-			t.Fatalf("runPasshog failed: %v", err)
+			t.Fatalf("runFasthog failed: %v", err)
 		}
 
 		// Verify output file was created
@@ -51,9 +51,9 @@ func TestIntegrationScanDirectory(t *testing.T) {
 		outputFile := filepath.Join(t.TempDir(), "results.txt")
 		extensions := []string{".txt"}
 
-		err := runPasshog(testDir, extensions, nil, PatternFiles{}, outputFile)
+		err := runFasthog(testDir, extensions, nil, PatternFiles{}, outputFile)
 		if err != nil {
-			t.Fatalf("runPasshog failed: %v", err)
+			t.Fatalf("runFasthog failed: %v", err)
 		}
 
 		content, err := os.ReadFile(outputFile)
@@ -72,9 +72,9 @@ func TestIntegrationScanDirectory(t *testing.T) {
 		emptyDir := t.TempDir()
 		outputFile := filepath.Join(t.TempDir(), "results.txt")
 
-		err := runPasshog(emptyDir, defaultExtensions, nil, PatternFiles{}, outputFile)
+		err := runFasthog(emptyDir, defaultExtensions, nil, PatternFiles{}, outputFile)
 		if err != nil {
-			t.Fatalf("runPasshog failed: %v", err)
+			t.Fatalf("runFasthog failed: %v", err)
 		}
 
 		content, err := os.ReadFile(outputFile)
@@ -100,9 +100,9 @@ func TestIntegrationScanDirectory(t *testing.T) {
 		}
 
 		outputFile := filepath.Join(t.TempDir(), "results.txt")
-		err = runPasshog(tmpDir, []string{".py"}, nil, PatternFiles{}, outputFile)
+		err = runFasthog(tmpDir, []string{".py"}, nil, PatternFiles{}, outputFile)
 		if err != nil {
-			t.Fatalf("runPasshog failed: %v", err)
+			t.Fatalf("runFasthog failed: %v", err)
 		}
 
 		content, err := os.ReadFile(outputFile)
@@ -120,7 +120,7 @@ func TestIntegrationScanDirectory(t *testing.T) {
 	})
 
 	t.Run("nonexistent directory", func(t *testing.T) {
-		err := runPasshog("/nonexistent/directory", defaultExtensions, nil, PatternFiles{}, "")
+		err := runFasthog("/nonexistent/directory", defaultExtensions, nil, PatternFiles{}, "")
 		if err == nil {
 			t.Error("expected error for nonexistent directory")
 		}
@@ -149,9 +149,9 @@ func TestIntegrationExcludeDirectories(t *testing.T) {
 	}
 
 	outputFile := filepath.Join(t.TempDir(), "results.txt")
-	err = runPasshog(tmpDir, defaultExtensions, nil, PatternFiles{}, outputFile)
+	err = runFasthog(tmpDir, defaultExtensions, nil, PatternFiles{}, outputFile)
 	if err != nil {
-		t.Fatalf("runPasshog failed: %v", err)
+		t.Fatalf("runFasthog failed: %v", err)
 	}
 
 	content, err := os.ReadFile(outputFile)
@@ -192,9 +192,9 @@ func TestIntegrationTopFilesReport(t *testing.T) {
 	}
 
 	outputFile := filepath.Join(t.TempDir(), "results.txt")
-	err := runPasshog(tmpDir, []string{".py"}, nil, PatternFiles{}, outputFile)
+	err := runFasthog(tmpDir, []string{".py"}, nil, PatternFiles{}, outputFile)
 	if err != nil {
-		t.Fatalf("runPasshog failed: %v", err)
+		t.Fatalf("runFasthog failed: %v", err)
 	}
 
 	// Verify output file was created and contains results
@@ -228,8 +228,8 @@ func TestIntegrationNoOutputFile(t *testing.T) {
 	}
 
 	// Run without output file (empty string)
-	err = runPasshog(tmpDir, []string{".py"}, nil, PatternFiles{}, "")
+	err = runFasthog(tmpDir, []string{".py"}, nil, PatternFiles{}, "")
 	if err != nil {
-		t.Fatalf("runPasshog failed: %v", err)
+		t.Fatalf("runFasthog failed: %v", err)
 	}
 }

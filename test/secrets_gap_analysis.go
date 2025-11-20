@@ -1,5 +1,5 @@
 // secrets-gap-analysis.go
-// This script compares the results of Trufflehog and Passhog scans to identify common and unique secrets detected by each tool.
+// This script compares the results of Trufflehog and Fasthog scans to identify common and unique secrets detected by each tool.
 
 package main
 
@@ -32,7 +32,7 @@ type TrufflehogResult struct {
 	Raw            string         `json:"Raw"`
 }
 
-type PasshogResult struct {
+type FasthogResult struct {
 	File   string
 	Line   int
 	Secret string
@@ -49,40 +49,40 @@ var (
 
 func main() {
 	trufflehogFile := flag.String("t", "", "Path to the trufflehog JSON file")
-	passhogFile := flag.String("p", "", "Path to the passhog text file")
+	fasthogFile := flag.String("p", "", "Path to the fasthog text file")
 	commonReport := flag.Bool("c", false, "Display common matches report")
 	verboseReport := flag.Bool("v", false, "Display verbose report")
 	flag.Parse()
 
-	if *trufflehogFile == "" || *passhogFile == "" {
-		fmt.Println("Usage: secrets-gap-analysis -t <trufflehog.json> -p <passhog.txt> [-c] [-v]")
+	if *trufflehogFile == "" || *fasthogFile == "" {
+		fmt.Println("Usage: secrets-gap-analysis -t <trufflehog.json> -p <fasthog.txt> [-c] [-v]")
 		flag.PrintDefaults()
 		os.Exit(1)
 	}
 
 	trufflehogResults := parseTrufflehogFile(*trufflehogFile)
-	passhogResults := parsePasshogFile(*passhogFile)
+	fasthogResults := parseFasthogFile(*fasthogFile)
 
-	trufflehogOnly, passhogOnly, matches, commonMatches := compareResults(trufflehogResults, passhogResults)
+	trufflehogOnly, fasthogOnly, matches, commonMatches := compareResults(trufflehogResults, fasthogResults)
 
 	if *verboseReport {
 		fmt.Println(subjectStyle.Render("Trufflehog Eligible Results:"))
 		printTable(trufflehogResults, nil)
 
-		fmt.Println(subjectStyle.Render("\nPasshog Results:"))
-		printTable(nil, passhogResults)
+		fmt.Println(subjectStyle.Render("\nFasthog Results:"))
+		printTable(nil, fasthogResults)
 	}
 
 	fmt.Println(subjectStyle.Render("\nSecrets only in Trufflehog:"))
 	fmt.Printf("Total secrets detected: %d\n", len(trufflehogOnly))
 	printTable(trufflehogOnly, nil)
 
-	fmt.Println(subjectStyle.Render("\nSecrets only in Passhog:"))
-	fmt.Printf("Total secrets detected: %d\n", len(passhogOnly))
-	printTable(nil, passhogOnly)
+	fmt.Println(subjectStyle.Render("\nSecrets only in Fasthog:"))
+	fmt.Printf("Total secrets detected: %d\n", len(fasthogOnly))
+	printTable(nil, fasthogOnly)
 
-	generateTopFilesReport(trufflehogOnly, passhogOnly)
-	generateMatchPercentageReport(trufflehogResults, passhogResults, trufflehogOnly, passhogOnly, matches, commonMatches)
+	generateTopFilesReport(trufflehogOnly, fasthogOnly)
+	generateMatchPercentageReport(trufflehogResults, fasthogResults, trufflehogOnly, fasthogOnly, matches, commonMatches)
 
 	if *commonReport {
 		fmt.Printf(subjectStyle.Render("\nCommon Matches:\t\t\t%d\n"), len(commonMatches))
@@ -128,7 +128,7 @@ func parseTrufflehogFile(filename string) []TrufflehogResult {
 	return results
 }
 
-func parsePasshogFile(filename string) []PasshogResult {
+func parseFasthogFile(filename string) []FasthogResult {
 	file, err := os.Open(filename)
 	if err != nil {
 		log.Fatalf("Failed to open file: %v", err)
@@ -138,7 +138,7 @@ func parsePasshogFile(filename string) []PasshogResult {
 	}()
 
 	scanner := bufio.NewScanner(file)
-	var results []PasshogResult
+	var results []FasthogResult
 	uniqueRecords := make(map[string]bool)
 	re := regexp.MustCompile(`\x1b\[[0-9;]*m`)
 
@@ -164,7 +164,7 @@ func parsePasshogFile(filename string) []PasshogResult {
 
 		recordKey := fmt.Sprintf("%s:%d:%s", file, lineNumber, secret)
 		if !uniqueRecords[recordKey] {
-			results = append(results, PasshogResult{File: file, Line: lineNumber, Secret: secret})
+			results = append(results, FasthogResult{File: file, Line: lineNumber, Secret: secret})
 			uniqueRecords[recordKey] = true
 		}
 	}
@@ -176,11 +176,11 @@ func parsePasshogFile(filename string) []PasshogResult {
 	return results
 }
 
-func compareResults(trufflehogResults []TrufflehogResult, passhogResults []PasshogResult) ([]TrufflehogResult, []PasshogResult, int, map[string][]int) {
-	passhogMap := make(map[string]PasshogResult)
-	for _, result := range passhogResults {
+func compareResults(trufflehogResults []TrufflehogResult, fasthogResults []FasthogResult) ([]TrufflehogResult, []FasthogResult, int, map[string][]int) {
+	fasthogMap := make(map[string]FasthogResult)
+	for _, result := range fasthogResults {
 		key := fmt.Sprintf("%s:%d", result.File, result.Line)
-		passhogMap[key] = result
+		fasthogMap[key] = result
 	}
 
 	var trufflehogOnly []TrufflehogResult
@@ -191,12 +191,12 @@ func compareResults(trufflehogResults []TrufflehogResult, passhogResults []Passh
 		trufflehogLine := result.SourceMetadata.Data.Filesystem.Line
 		isCommon := false
 
-		for key, passhogResult := range passhogMap {
-			if strings.Contains(trufflehogFile, passhogResult.File) && trufflehogLine == passhogResult.Line {
+		for key, fasthogResult := range fasthogMap {
+			if strings.Contains(trufflehogFile, fasthogResult.File) && trufflehogLine == fasthogResult.Line {
 				isCommon = true
 				matches++
 				commonMatches[trufflehogFile] = append(commonMatches[trufflehogFile], trufflehogLine)
-				delete(passhogMap, key)
+				delete(fasthogMap, key)
 				break
 			}
 		}
@@ -206,30 +206,30 @@ func compareResults(trufflehogResults []TrufflehogResult, passhogResults []Passh
 		}
 	}
 
-	var passhogOnly []PasshogResult
-	for _, result := range passhogMap {
-		passhogOnly = append(passhogOnly, result)
+	var fasthogOnly []FasthogResult
+	for _, result := range fasthogMap {
+		fasthogOnly = append(fasthogOnly, result)
 	}
 
-	return trufflehogOnly, passhogOnly, matches, commonMatches
+	return trufflehogOnly, fasthogOnly, matches, commonMatches
 }
 
-func generateTopFilesReport(trufflehogOnly []TrufflehogResult, passhogOnly []PasshogResult) {
+func generateTopFilesReport(trufflehogOnly []TrufflehogResult, fasthogOnly []FasthogResult) {
 	trufflehogFileCount := make(map[string]int)
 	for _, result := range trufflehogOnly {
 		trufflehogFileCount[result.SourceMetadata.Data.Filesystem.File]++
 	}
 
-	passhogFileCount := make(map[string]int)
-	for _, result := range passhogOnly {
-		passhogFileCount[result.File]++
+	fasthogFileCount := make(map[string]int)
+	for _, result := range fasthogOnly {
+		fasthogFileCount[result.File]++
 	}
 
-	fmt.Println(subjectStyle.Render("\nTop-20 files where Passhog did not find secrets found by Trufflehog:"))
+	fmt.Println(subjectStyle.Render("\nTop-20 files where Fasthog did not find secrets found by Trufflehog:"))
 	printTopFiles(trufflehogFileCount)
 
-	fmt.Println(subjectStyle.Render("\nTop-20 files where Passhog had false positives:"))
-	printTopFiles(passhogFileCount)
+	fmt.Println(subjectStyle.Render("\nTop-20 files where Fasthog had false positives:"))
+	printTopFiles(fasthogFileCount)
 }
 
 func printTopFiles(fileCount map[string]int) {
@@ -252,17 +252,17 @@ func printTopFiles(fileCount map[string]int) {
 	}
 }
 
-func generateMatchPercentageReport(trufflehogResults []TrufflehogResult, passhogResults []PasshogResult, trufflehogOnly []TrufflehogResult, passhogOnly []PasshogResult, matches int, commonMatches map[string][]int) {
+func generateMatchPercentageReport(trufflehogResults []TrufflehogResult, fasthogResults []FasthogResult, trufflehogOnly []TrufflehogResult, fasthogOnly []FasthogResult, matches int, commonMatches map[string][]int) {
 	totalTrufflehog := len(trufflehogResults)
-	totalPasshog := len(passhogResults)
-	falsePositives := len(passhogOnly)
+	totalFasthog := len(fasthogResults)
+	falsePositives := len(fasthogOnly)
 
 	matchPercentage := float64(matches) / float64(totalTrufflehog) * 100
-	falsePositivePercentage := float64(falsePositives) / float64(totalPasshog) * 100
+	falsePositivePercentage := float64(falsePositives) / float64(totalFasthog) * 100
 
-	passhogRecordsStyle := fileNameStyle
-	if float64(totalPasshog) > float64(totalTrufflehog)*1.1 {
-		passhogRecordsStyle = passhogRecordsStyle.Foreground(lipgloss.Color("160")) // Dark red
+	fasthogRecordsStyle := fileNameStyle
+	if float64(totalFasthog) > float64(totalTrufflehog)*1.1 {
+		fasthogRecordsStyle = fasthogRecordsStyle.Foreground(lipgloss.Color("160")) // Dark red
 	}
 
 	horizontalLine := strings.Repeat("-", 48)
@@ -270,7 +270,7 @@ func generateMatchPercentageReport(trufflehogResults []TrufflehogResult, passhog
 	fmt.Println(tableStyle.Width(48).Render(fmt.Sprintf(
 		"%-30s %10d\n%-30s %s\n%s\n%-30s %10d\n%-30s %10d\n%s\n%-30s %10.2f%%\n%-30s %10.2f%%",
 		"Trufflehog records:", totalTrufflehog,
-		"Passhog records:", passhogRecordsStyle.Render(fmt.Sprintf("%10d", totalPasshog)),
+		"Fasthog records:", fasthogRecordsStyle.Render(fmt.Sprintf("%10d", totalFasthog)),
 		horizontalLine,
 		"Files w/ Secrets Matched:", len(commonMatches),
 		"Total Num Secrets Matched:", matches,
@@ -287,7 +287,7 @@ func firstLine(s string) string {
 	return s
 }
 
-func printTable(trufflehogResults []TrufflehogResult, passhogResults []PasshogResult) {
+func printTable(trufflehogResults []TrufflehogResult, fasthogResults []FasthogResult) {
 	var rows []string
 	if trufflehogResults != nil {
 		for _, result := range trufflehogResults {
@@ -296,7 +296,7 @@ func printTable(trufflehogResults []TrufflehogResult, passhogResults []PasshogRe
 			rows = append(rows, row)
 		}
 	} else {
-		for _, result := range passhogResults {
+		for _, result := range fasthogResults {
 			relativePath, fileName := splitPath(result.File)
 			row := fmt.Sprintf("%s/%s, Line: %d, Secret: %s", pathStyle.Render(relativePath), fileNameStyle.Render(fileName), result.Line, secretStyle.Render(truncate(firstLine(result.Secret), 100)))
 			rows = append(rows, row)

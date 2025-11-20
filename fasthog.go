@@ -1,13 +1,13 @@
-// Package main implements passhog, a secrets detection tool for source code repositories.
+// Package main implements fasthog, a secrets detection tool for source code repositories.
 //
-// Passhog scans directories for potential secrets and credentials using configurable
+// Fasthog scans directories for potential secrets and credentials using configurable
 // regular expression patterns. It employs a two-stage detection approach with fast
 // preliminary patterns and strict validation patterns, while filtering out known
 // false positives.
 //
 // Usage:
 //
-//	passhog <directory> [--types=<extensions>] [--output=<file>]
+//	fasthog <directory> [--types=<extensions>] [--output=<file>]
 //
 // Arguments:
 //
@@ -17,7 +17,7 @@
 //
 // Example:
 //
-//	passhog /path/to/repo --types=py,js --output=results.txt
+//	fasthog /path/to/repo --types=py,js --output=results.txt
 //
 // The tool uses concurrent processing to scan multiple files in parallel,
 // with the number of workers matching the available CPU cores.
@@ -70,7 +70,7 @@ var defaultExtensions = []string{
 	".md", ".properties",
 }
 
-// OutputFormat represents the supported output formats for passhog.
+// OutputFormat represents the supported output formats for fasthog.
 type OutputFormat string
 
 const (
@@ -272,14 +272,14 @@ func scanDirectory(opts scanOptions) scanResult {
 
 // buildUsage constructs the primary usage/help text for the CLI.
 func buildUsage() string {
-	return `Usage: passhog <directory> [flags]
+	return `Usage: fasthog <directory> [flags]
 
 Flags:
   --types string     Comma-separated file extensions to include (e.g., yml,yaml,sh)
   --output string    Path where output should be written
   --format string    Output format: text or json (default "text")
   --json             Shortcut for --format=json
-  --config string    Path to config file (default: passhog.yaml if present)
+  --config string    Path to config file (default: fasthog.yaml if present)
 `
 }
 
@@ -312,7 +312,7 @@ type OutputConfig struct {
 	Format string
 }
 
-// Config represents the contents of a passhog configuration file.
+// Config represents the contents of a fasthog configuration file.
 // It intentionally models only the fields we currently support; unknown fields
 // in the YAML are ignored to allow forward compatibility.
 type Config struct {
@@ -432,6 +432,10 @@ func loadConfig(path string) (Config, error) {
 
 // determineExtensions applies precedence rules to compute the effective
 // extension set used for scanning: CLI flag > config > defaults.
+//
+// If the --types flag is set but contains only whitespace/commas (no valid
+// extensions), the function falls through to config or defaults. This allows
+// graceful handling of malformed input without breaking the scan.
 func determineExtensions(extensionsFlag string, flagChanged bool, cfg Config) []string {
 	if flagChanged && extensionsFlag != "" {
 		parts := strings.Split(extensionsFlag, ",")
@@ -446,6 +450,8 @@ func determineExtensions(extensionsFlag string, flagChanged bool, cfg Config) []
 			}
 			extensions = append(extensions, ext)
 		}
+		// If CLI flag was set but all values were invalid (whitespace/commas),
+		// fall through to config or defaults rather than failing.
 		if len(extensions) > 0 {
 			return extensions
 		}
@@ -554,11 +560,6 @@ func loadEffectivePatterns(patternFiles PatternFiles) (exclude, fast, slow *rege
 	}
 
 	return
-}
-
-// loadDefaultPatterns loads the default regex patterns used for scanning.
-func loadDefaultPatterns() (exclude, fast, slow *regexp.Regexp, err error) {
-	return loadEffectivePatterns(PatternFiles{})
 }
 
 // shellReplacer replaces bash escape sequences in regex files to maintain
@@ -701,10 +702,10 @@ func main() {
 		}
 		fileCfg = cfg
 	} else {
-		if _, err := os.Stat("passhog.yaml"); err == nil {
-			cfg, err := loadConfig("passhog.yaml")
+		if _, err := os.Stat("fasthog.yaml"); err == nil {
+			cfg, err := loadConfig("fasthog.yaml")
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "Error loading config file passhog.yaml: %v\n", err)
+				fmt.Fprintf(os.Stderr, "Error loading config file fasthog.yaml: %v\n", err)
 				os.Exit(1)
 			}
 			fileCfg = cfg
@@ -748,11 +749,11 @@ func main() {
 	var runErr error
 	switch outputFormat {
 	case OutputFormatJSON:
-		runErr = runPasshogJSON(directory, extensions, excludeDirs, fileCfg.Patterns, outputPath)
+		runErr = runFasthogJSON(directory, extensions, excludeDirs, fileCfg.Patterns, outputPath)
 	case OutputFormatText:
 		fallthrough
 	default:
-		runErr = runPasshog(directory, extensions, excludeDirs, fileCfg.Patterns, outputPath)
+		runErr = runFasthog(directory, extensions, excludeDirs, fileCfg.Patterns, outputPath)
 	}
 
 	if runErr != nil {
@@ -761,9 +762,9 @@ func main() {
 	}
 }
 
-// runPasshogJSON executes the secrets scanning process and emits JSON output.
+// runFasthogJSON executes the secrets scanning process and emits JSON output.
 // It is intentionally non-interactive: no TUI, no ANSI, and only JSON on stdout.
-func runPasshogJSON(directory string, extensions []string, excludeDirs []string, patternFiles PatternFiles, outputPath string) error {
+func runFasthogJSON(directory string, extensions []string, excludeDirs []string, patternFiles PatternFiles, outputPath string) error {
 	if err := validateDirectory(directory); err != nil {
 		return err
 	}
@@ -836,9 +837,9 @@ func runPasshogJSON(directory string, extensions []string, excludeDirs []string,
 	return nil
 }
 
-// runPasshog executes the secrets scanning process on the specified directory.
+// runFasthog executes the secrets scanning process on the specified directory.
 // It returns an error if the scan fails.
-func runPasshog(directory string, extensions []string, excludeDirs []string, patternFiles PatternFiles, outputPath string) error {
+func runFasthog(directory string, extensions []string, excludeDirs []string, patternFiles PatternFiles, outputPath string) error {
 	start := time.Now()
 
 	if err := validateDirectory(directory); err != nil {

@@ -1,6 +1,6 @@
-# Contributing to passhog
+# Contributing to fasthog
 
-Thank you for your interest in contributing to passhog. This document provides guidelines and instructions for contributing.
+Thank you for your interest in contributing to fasthog. This document provides guidelines and instructions for contributing.
 
 ## Code of Conduct
 
