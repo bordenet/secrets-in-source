@@ -27,6 +27,8 @@ import (
 	"bufio"
 	"bytes"
 	"embed"
+	"encoding/json"
+
 	"fmt"
 	"io/fs"
 	"os"
@@ -66,6 +68,444 @@ var defaultExtensions = []string{
 	".js", ".json", ".py", ".cs", ".go", ".java", ".sh", ".tf", ".yml", ".yaml",
 	".env", "env", ".ENV", "ENV", ".key", ".backup", ".tfstate", ".ts", ".txt",
 	".md", ".properties",
+}
+
+// OutputFormat represents the supported output formats for passhog.
+type OutputFormat string
+
+const (
+	OutputFormatText OutputFormat = "text"
+	OutputFormatJSON OutputFormat = "json"
+)
+
+// Match represents a single detected secret occurrence.
+type Match struct {
+	File        string `json:"file"`
+	Line        int    `json:"line"`
+	LineSnippet string `json:"line_snippet"`
+	MatchText   string `json:"match_text"`
+}
+
+// FileMatchCount represents the number of matches found in a single file.
+type FileMatchCount struct {
+	File  string `json:"file"`
+	Count int    `json:"match_count"`
+}
+
+// ScanSummary captures aggregate information about a scan.
+type ScanSummary struct {
+	TotalMatches        int `json:"total_matches"`
+	TotalFilesWithMatch int `json:"total_files_with_matches"`
+	TotalFilesScanned   int `json:"total_files_scanned"`
+}
+
+// JSONResult is the top-level structure emitted when using JSON output format.
+type JSONResult struct {
+	Directory  string           `json:"directory"`
+	Extensions []string         `json:"extensions"`
+	StartTime  time.Time        `json:"start_time"`
+	DurationMs int64            `json:"duration_ms"`
+	Matches    []Match          `json:"matches"`
+	Summary    ScanSummary      `json:"summary"`
+	TopFiles   []FileMatchCount `json:"top_files"`
+}
+
+// parseOutputFormat converts a user-supplied string into an OutputFormat value.
+func parseOutputFormat(format string) (OutputFormat, error) {
+	switch strings.ToLower(strings.TrimSpace(format)) {
+	case "", string(OutputFormatText):
+		return OutputFormatText, nil
+	case string(OutputFormatJSON):
+		return OutputFormatJSON, nil
+	default:
+		return "", fmt.Errorf("invalid output format %q (supported: text, json)", format)
+	}
+}
+
+// scanOptions controls the behaviour of the core scanning engine.
+type scanOptions struct {
+	Directory   string
+	Extensions  []string
+	ExcludeDirs []string
+
+	ExcludePatterns *regexp.Regexp
+	FastPatterns    *regexp.Regexp
+	SlowPatterns    *regexp.Regexp
+
+	// OnCurrentFile, if non-nil, is invoked whenever a file is about to be scanned.
+	// index is zero-based, total is the total number of files to scan.
+	OnCurrentFile func(path string, index, total int)
+
+	// OnMatch, if non-nil, is invoked whenever a matching line is found.
+	OnMatch func(path string, lineNo int, line string, match string)
+}
+
+// scanResult captures the structured output from a scan.
+type scanResult struct {
+	Matches    []Match
+	MatchFiles map[string]int
+	Filenames  []string
+}
+
+// mergeExcludeDirs returns the union of defaultExcludeDirs and any additional
+// directories supplied in extra, preserving order and avoiding duplicates.
+func mergeExcludeDirs(extra []string) []string {
+	if len(extra) == 0 {
+		out := make([]string, len(defaultExcludeDirs))
+		copy(out, defaultExcludeDirs)
+		return out
+	}
+
+	seen := make(map[string]struct{}, len(defaultExcludeDirs)+len(extra))
+	var merged []string
+
+	for _, d := range defaultExcludeDirs {
+		if _, ok := seen[d]; !ok {
+			seen[d] = struct{}{}
+			merged = append(merged, d)
+		}
+	}
+
+	for _, d := range extra {
+		if _, ok := seen[d]; !ok {
+			seen[d] = struct{}{}
+			merged = append(merged, d)
+		}
+	}
+
+	return merged
+}
+
+// scanDirectory walks the target directory and applies the supplied patterns,
+// returning structured matches and per-file counts. This function is intentionally
+// UI-agnostic so it can be reused by both the TUI and JSON output paths.
+func scanDirectory(opts scanOptions) scanResult {
+	result := scanResult{
+		MatchFiles: make(map[string]int),
+	}
+
+	root := os.DirFS(opts.Directory)
+	excludeDirs := mergeExcludeDirs(opts.ExcludeDirs)
+
+	// Collect the list of files to scan.
+	var filenames []string
+	_ = fs.WalkDir(root, ".", func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return nil
+		}
+		if !hasExtension(path, opts.Extensions) {
+			return nil
+		}
+
+		parts := strings.Split(path, "/")
+		for _, excludeDir := range excludeDirs {
+			if slices.Contains(parts, excludeDir) {
+				return nil
+			}
+		}
+
+		filenames = append(filenames, path)
+		return nil
+	})
+
+	result.Filenames = filenames
+
+	var (
+		mu        sync.Mutex
+		semaphore = make(chan struct{}, runtime.NumCPU())
+		wg        sync.WaitGroup
+	)
+
+	for i, path := range filenames {
+		semaphore <- struct{}{}
+		wg.Add(1)
+
+		if opts.OnCurrentFile != nil {
+			opts.OnCurrentFile(path, i, len(filenames))
+		}
+
+		go func(path string) {
+			defer wg.Done()
+			defer func() { <-semaphore }()
+
+			f, err := root.Open(path) // https://go.dev/blog/loopvar-preview
+			if err != nil {
+				panic(fmt.Errorf("unable to open file %s: %w", path, err))
+			}
+			defer func() {
+				if closeErr := f.Close(); closeErr != nil {
+					panic(fmt.Errorf("failed to close file %s: %w", path, closeErr))
+				}
+			}()
+
+			scanner := bufio.NewScanner(f)
+			lineNo := 0
+			for scanner.Scan() {
+				lineNo++
+				line := scanner.Text()
+				if len(line) <= 8 {
+					continue
+				}
+				if opts.FastPatterns.MatchString(line) {
+					if match := opts.SlowPatterns.FindString(line); match != "" && !opts.ExcludePatterns.MatchString(line) {
+						if opts.OnMatch != nil {
+							opts.OnMatch(path, lineNo, line, match)
+						}
+						mu.Lock()
+						result.Matches = append(result.Matches, Match{
+							File:        path,
+							Line:        lineNo,
+							LineSnippet: strings.TrimSpace(line),
+							MatchText:   match,
+						})
+						result.MatchFiles[path]++
+						mu.Unlock()
+					}
+				}
+			}
+		}(path)
+	}
+
+	wg.Wait()
+	return result
+}
+
+// buildUsage constructs the primary usage/help text for the CLI.
+func buildUsage() string {
+	return `Usage: passhog <directory> [flags]
+
+Flags:
+  --types string     Comma-separated file extensions to include (e.g., yml,yaml,sh)
+  --output string    Path where output should be written
+  --format string    Output format: text or json (default "text")
+  --json             Shortcut for --format=json
+  --config string    Path to config file (default: passhog.yaml if present)
+`
+}
+
+// validateDirectory ensures that the provided path exists and is a directory.
+func validateDirectory(directory string) error {
+	info, err := os.Stat(directory)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("directory does not exist: %s", directory)
+		}
+		return fmt.Errorf("cannot access directory: %w", err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("path is not a directory: %s", directory)
+	}
+	return nil
+}
+
+// PatternFiles describes optional overrides for the default regex pattern files.
+type PatternFiles struct {
+	Direct  string
+	Fast    string
+	Strict  string
+	Exclude string
+}
+
+// OutputConfig holds configuration related to the scan output.
+type OutputConfig struct {
+	Path   string
+	Format string
+}
+
+// Config represents the contents of a passhog configuration file.
+// It intentionally models only the fields we currently support; unknown fields
+// in the YAML are ignored to allow forward compatibility.
+type Config struct {
+	Directory   string
+	Extensions  []string
+	ExcludeDirs []string
+	Patterns    PatternFiles
+	Output      OutputConfig
+}
+
+// loadConfig parses a minimal YAML configuration file. It supports the subset
+// of YAML we need:
+//
+//	directory: path
+//	extensions:
+//	  - .go
+//	  - py
+//	exclude_dirs:
+//	  - build
+//	output:
+//	  path: results.txt
+//	  format: json
+//	patterns:
+//	  direct: direct_matches.regex
+//	  fast: fast_patterns.regex
+//	  strict: strict_patterns.regex
+//	  exclude: exclude_patterns.regex
+//
+// List values must use the "- item" form; inline YAML lists are not supported.
+func loadConfig(path string) (Config, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return Config{}, fmt.Errorf("unable to read config file %s: %w", path, err)
+	}
+
+	var cfg Config
+	var currentSection string
+
+	scanner := bufio.NewScanner(bytes.NewReader(data))
+	for scanner.Scan() {
+		line := scanner.Text()
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+
+		indent := len(line) - len(strings.TrimLeft(line, " "))
+		if indent == 0 {
+			currentSection = ""
+			key, value := splitKeyValue(trimmed)
+			switch key {
+			case "directory":
+				cfg.Directory = value
+			case "extensions":
+				currentSection = "extensions"
+			case "exclude_dirs":
+				currentSection = "exclude_dirs"
+			case "output":
+				currentSection = "output"
+			case "patterns":
+				currentSection = "patterns"
+			default:
+				// Ignore unknown top-level keys for forward compatibility.
+			}
+			continue
+		}
+
+		trimmedIndent := strings.TrimSpace(line)
+
+		switch currentSection {
+		case "extensions":
+			if strings.HasPrefix(trimmedIndent, "- ") {
+				val := strings.TrimSpace(strings.TrimPrefix(trimmedIndent, "- "))
+				if val != "" {
+					if !strings.HasPrefix(val, ".") {
+						val = "." + val
+					}
+					cfg.Extensions = append(cfg.Extensions, val)
+				}
+			}
+		case "exclude_dirs":
+			if strings.HasPrefix(trimmedIndent, "- ") {
+				val := strings.TrimSpace(strings.TrimPrefix(trimmedIndent, "- "))
+				if val != "" {
+					cfg.ExcludeDirs = append(cfg.ExcludeDirs, val)
+				}
+			}
+		case "output":
+			key, value := splitKeyValue(trimmed)
+			switch key {
+			case "path":
+				cfg.Output.Path = value
+			case "format":
+				cfg.Output.Format = value
+			}
+		case "patterns":
+			key, value := splitKeyValue(trimmed)
+			switch key {
+			case "direct":
+				cfg.Patterns.Direct = value
+			case "fast":
+				cfg.Patterns.Fast = value
+			case "strict":
+				cfg.Patterns.Strict = value
+			case "exclude":
+				cfg.Patterns.Exclude = value
+			}
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return Config{}, fmt.Errorf("failed to parse config file %s: %w", path, err)
+	}
+
+	return cfg, nil
+}
+
+// splitKeyValue splits a "key: value" YAML line into key and value components.
+func splitKeyValue(s string) (key, value string) {
+	parts := strings.SplitN(s, ":", 2)
+	key = strings.TrimSpace(parts[0])
+	if len(parts) == 2 {
+		value = strings.TrimSpace(parts[1])
+	}
+	return key, value
+}
+
+// loadEffectivePatterns loads the regex patterns used for scanning, applying
+// any file overrides specified in patternFiles. When no overrides are
+// provided, the embedded default patterns are used.
+func loadEffectivePatterns(patternFiles PatternFiles) (exclude, fast, slow *regexp.Regexp, err error) {
+	overrideFS := os.DirFS(".")
+
+	// Exclude patterns.
+	if patternFiles.Exclude != "" {
+		exclude, err = loadRegexes(overrideFS, patternFiles.Exclude)
+		if err != nil {
+			err = fmt.Errorf("failed to load exclude patterns from %s: %w", patternFiles.Exclude, err)
+			return
+		}
+	} else {
+		exclude, err = loadRegexes(regexFS, "exclude_patterns.regex")
+		if err != nil {
+			err = fmt.Errorf("failed to load exclude patterns: %w", err)
+			return
+		}
+	}
+
+	// Fast patterns.
+	if patternFiles.Fast != "" {
+		fast, err = loadRegexes(overrideFS, patternFiles.Fast)
+		if err != nil {
+			err = fmt.Errorf("failed to load fast patterns from %s: %w", patternFiles.Fast, err)
+			return
+		}
+	} else {
+		fast, err = loadRegexes(regexFS, "direct_matches.regex", "fast_patterns.regex")
+		if err != nil {
+			err = fmt.Errorf("failed to load fast patterns: %w", err)
+			return
+		}
+	}
+
+	// Slow (strict) patterns. If either direct or strict overrides are supplied,
+	// they fully replace the embedded slow patterns.
+	if patternFiles.Direct != "" || patternFiles.Strict != "" {
+		var paths []string
+		if patternFiles.Direct != "" {
+			paths = append(paths, patternFiles.Direct)
+		}
+		if patternFiles.Strict != "" {
+			paths = append(paths, patternFiles.Strict)
+		}
+
+		slow, err = loadRegexes(overrideFS, paths...)
+		if err != nil {
+			err = fmt.Errorf("failed to load strict patterns from override files: %w", err)
+			return
+		}
+	} else {
+		slow, err = loadRegexes(regexFS, "direct_matches.regex", "strict_patterns.regex")
+		if err != nil {
+			err = fmt.Errorf("failed to load strict patterns: %w", err)
+			return
+		}
+	}
+
+	return
+}
+
+// loadDefaultPatterns loads the default regex patterns used for scanning.
+func loadDefaultPatterns() (exclude, fast, slow *regexp.Regexp, err error) {
+	return loadEffectivePatterns(PatternFiles{})
 }
 
 // shellReplacer replaces bash escape sequences in regex files to maintain
@@ -178,178 +618,266 @@ func main() {
 	var extensionsList string
 	pflag.StringVar(&extensionsList, "types", "", "Comma-separated list of file extensions to include (e.g., yml,yaml,sh)")
 
+	var formatFlag string
+	pflag.StringVar(&formatFlag, "format", string(OutputFormatText), "Output format: text or json")
+
+	var jsonFlag bool
+	pflag.BoolVar(&jsonFlag, "json", false, "Shortcut for --format=json")
+
+	var configPath string
+	pflag.StringVar(&configPath, "config", "", "Path to configuration file (YAML; optional)")
+
 	pflag.Parse()
 
 	remainingArgs := pflag.Args()
 
 	if len(remainingArgs) < 1 {
-		fmt.Println("Usage: passhog <directory> [--types=<extensions>] [--output=<file>]")
-		fmt.Println("  <directory>   Directory to scan for secrets")
-		fmt.Println("  [--types]     Comma-separated file extensions (e.g., yml,yaml,sh)")
-		fmt.Println("  [--output]    Output file for results")
+		fmt.Println(buildUsage())
 		os.Exit(1)
 	}
 
 	directory := remainingArgs[0]
 
-	// Parse extensions or use defaults
-	extensions := defaultExtensions
-	if extensionsList != "" {
-		extensions = strings.Split(extensionsList, ",")
-		for i, ext := range extensions {
-			if !strings.HasPrefix(ext, ".") {
-				extensions[i] = "." + ext
+	// Load configuration file, if any.
+	var fileCfg Config
+	if configPath != "" {
+		cfg, err := loadConfig(configPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error loading config file %s: %v\n", configPath, err)
+			os.Exit(1)
+		}
+		fileCfg = cfg
+	} else {
+		if _, err := os.Stat("passhog.yaml"); err == nil {
+			cfg, err := loadConfig("passhog.yaml")
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error loading config file passhog.yaml: %v\n", err)
+				os.Exit(1)
 			}
+			fileCfg = cfg
 		}
 	}
 
-	fmt.Printf("Directory: %s\n", directory)
-	if extensionsList != "" {
-		fmt.Printf("Extensions: %v\n", extensions)
+	// Determine extensions: CLI > config > defaults.
+	var extensions []string
+	if pflag.Lookup("types").Changed && extensionsList != "" {
+		extParts := strings.Split(extensionsList, ",")
+		extensions = make([]string, len(extParts))
+		for i, ext := range extParts {
+			if !strings.HasPrefix(ext, ".") {
+				extensions[i] = "." + ext
+			} else {
+				extensions[i] = ext
+			}
+		}
+	} else if len(fileCfg.Extensions) > 0 {
+		extensions = append([]string(nil), fileCfg.Extensions...)
 	} else {
-		fmt.Println("Extensions: Using defaults")
-	}
-	if outputPath != "" {
-		fmt.Printf("Output: %s\n", outputPath)
+		extensions = defaultExtensions
 	}
 
-	if err := runPasshog(directory, extensions, outputPath); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+	// Determine additional excluded directories from config.
+	excludeDirs := append([]string(nil), fileCfg.ExcludeDirs...)
+
+	// Determine output format: CLI (--json or --format) > config > default(text).
+	formatValue := formatFlag
+	if jsonFlag {
+		formatValue = string(OutputFormatJSON)
+	}
+
+	if !pflag.Lookup("format").Changed && !pflag.Lookup("json").Changed && fileCfg.Output.Format != "" {
+		formatValue = fileCfg.Output.Format
+	}
+
+	outputFormat, err := parseOutputFormat(formatValue)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		os.Exit(1)
+	}
+
+	// Determine output path: CLI > config.
+	if !pflag.Lookup("output").Changed && outputPath == "" && fileCfg.Output.Path != "" {
+		outputPath = fileCfg.Output.Path
+	}
+
+	if outputFormat == OutputFormatText {
+		fmt.Printf("Directory: %s\n", directory)
+		if pflag.Lookup("types").Changed || len(fileCfg.Extensions) > 0 {
+			fmt.Printf("Extensions: %v\n", extensions)
+		} else {
+			fmt.Println("Extensions: Using defaults")
+		}
+		if outputPath != "" {
+			fmt.Printf("Output: %s\n", outputPath)
+		}
+	}
+
+	var runErr error
+	switch outputFormat {
+	case OutputFormatJSON:
+		runErr = runPasshogJSON(directory, extensions, excludeDirs, fileCfg.Patterns, outputPath)
+	case OutputFormatText:
+		fallthrough
+	default:
+		runErr = runPasshog(directory, extensions, excludeDirs, fileCfg.Patterns, outputPath)
+	}
+
+	if runErr != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", runErr)
 		os.Exit(1)
 	}
 }
 
+// runPasshogJSON executes the secrets scanning process and emits JSON output.
+// It is intentionally non-interactive: no TUI, no ANSI, and only JSON on stdout.
+func runPasshogJSON(directory string, extensions []string, excludeDirs []string, patternFiles PatternFiles, outputPath string) error {
+	if err := validateDirectory(directory); err != nil {
+		return err
+	}
+
+	excludePatterns, fastPatterns, slowPatterns, err := loadEffectivePatterns(patternFiles)
+	if err != nil {
+		return err
+	}
+
+	startedAt := time.Now().UTC()
+
+	opts := scanOptions{
+		Directory:       directory,
+		Extensions:      extensions,
+		ExcludeDirs:     excludeDirs,
+		ExcludePatterns: excludePatterns,
+		FastPatterns:    fastPatterns,
+		SlowPatterns:    slowPatterns,
+	}
+
+	scanRes := scanDirectory(opts)
+
+	summary := ScanSummary{
+		TotalMatches:      len(scanRes.Matches),
+		TotalFilesScanned: len(scanRes.Filenames),
+	}
+	for _, count := range scanRes.MatchFiles {
+		if count > 0 {
+			summary.TotalFilesWithMatch++
+		}
+	}
+
+	topFiles := make([]FileMatchCount, 0, len(scanRes.MatchFiles))
+	for file, count := range scanRes.MatchFiles {
+		topFiles = append(topFiles, FileMatchCount{File: file, Count: count})
+	}
+	sort.Slice(topFiles, func(i, j int) bool {
+		if topFiles[i].Count == topFiles[j].Count {
+			return topFiles[i].File < topFiles[j].File
+		}
+		return topFiles[i].Count > topFiles[j].Count
+	})
+
+	result := JSONResult{
+		Directory:  directory,
+		Extensions: extensions,
+		StartTime:  startedAt,
+		DurationMs: time.Since(startedAt).Milliseconds(),
+		Matches:    scanRes.Matches,
+		Summary:    summary,
+		TopFiles:   topFiles,
+	}
+
+	data, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to encode JSON output: %w", err)
+	}
+
+	// Write JSON to stdout. This must be the only output in JSON mode.
+	if _, err := os.Stdout.Write(append(data, '\n')); err != nil {
+		return fmt.Errorf("failed to write JSON to stdout: %w", err)
+	}
+
+	if outputPath != "" {
+		if err := os.WriteFile(outputPath, append(data, '\n'), 0o644); err != nil {
+			return fmt.Errorf("failed to write JSON output to %s: %w", outputPath, err)
+		}
+	}
+
+	return nil
+}
+
 // runPasshog executes the secrets scanning process on the specified directory.
 // It returns an error if the scan fails.
-func runPasshog(directory string, extensions []string, outputPath string) error {
+func runPasshog(directory string, extensions []string, excludeDirs []string, patternFiles PatternFiles, outputPath string) error {
 	start := time.Now()
 
-	// Validate directory exists and is accessible
-	info, err := os.Stat(directory)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return fmt.Errorf("directory does not exist: %s", directory)
-		}
-		return fmt.Errorf("cannot access directory: %w", err)
-	}
-	if !info.IsDir() {
-		return fmt.Errorf("path is not a directory: %s", directory)
+	if err := validateDirectory(directory); err != nil {
+		return err
 	}
 
-	// Load and compile regex patterns
-	excludePatterns, err := loadRegexes(regexFS, "exclude_patterns.regex")
+	excludePatterns, fastPatterns, slowPatterns, err := loadEffectivePatterns(patternFiles)
 	if err != nil {
-		return fmt.Errorf("failed to load exclude patterns: %w", err)
-	}
-	fastPatterns, err := loadRegexes(regexFS, "direct_matches.regex", "fast_patterns.regex")
-	if err != nil {
-		return fmt.Errorf("failed to load fast patterns: %w", err)
-	}
-	slowPatterns, err := loadRegexes(regexFS, "direct_matches.regex", "strict_patterns.regex")
-	if err != nil {
-		return fmt.Errorf("failed to load strict patterns: %w", err)
+		return err
 	}
 
-	// Set up the UI
 	p := tea.NewProgram(model{
 		progress: progress.New(progress.WithDefaultGradient()),
 	})
 
-	var matches []string
-	matchFiles := make(map[string]int)
-	var filenames []string
+	var (
+		matches []string
+		mu      sync.Mutex
+	)
 
-	// Walk the filesystem and collect files to scan
+	resultsCh := make(chan scanResult, 1)
+
 	go func() {
-		root := os.DirFS(directory)
-		_ = fs.WalkDir(root, ".", func(path string, d fs.DirEntry, err error) error {
-			if err != nil || d.IsDir() {
-				return nil
-			}
-			if !hasExtension(path, extensions) {
-				return nil
-			}
-			parts := strings.Split(path, "/")
-			for _, excludeDir := range defaultExcludeDirs {
-				if slices.Contains(parts, excludeDir) {
-					return nil
+		opts := scanOptions{
+			Directory:       directory,
+			Extensions:      extensions,
+			ExcludeDirs:     excludeDirs,
+			ExcludePatterns: excludePatterns,
+			FastPatterns:    fastPatterns,
+			SlowPatterns:    slowPatterns,
+			OnCurrentFile: func(path string, index, total int) {
+				percent := 0.0
+				if total > 0 {
+					percent = float64(index) / float64(total)
 				}
-			}
-			filenames = append(filenames, path)
-			return nil
-		})
-
-		mu := sync.Mutex{}
-		semaphore := make(chan struct{}, runtime.NumCPU())
-		wg := sync.WaitGroup{}
-		for n, path := range filenames {
-			// Run up to num CPU file scanners in parallel. Once the semaphore is full,
-			// this will block until one of the goroutines finishes and releases a slot.
-			semaphore <- struct{}{}
-			wg.Add(1)
-			p.Send(msgCurrentFile{path, float64(n) / float64(len(filenames))})
-			go func(path string) {
-				defer wg.Done()
-				defer func() { <-semaphore }() // Let the next one start by clearing an entry.
-
-				f, err := root.Open(path) // https://go.dev/blog/loopvar-preview
-				if err != nil {
-					panic(fmt.Errorf("unable to open file %s: %w", path, err))
-				}
-				defer func() {
-					if closeErr := f.Close(); closeErr != nil {
-						panic(fmt.Errorf("failed to close file %s: %w", path, closeErr))
-					}
-				}()
-
-				scanner := bufio.NewScanner(f)
-				lineNo := 0
-				for scanner.Scan() {
-					lineNo++
-					line := scanner.Text()
-					if len(line) <= 8 {
-						continue
-					}
-					if fastPatterns.MatchString(line) {
-						if match := slowPatterns.FindString(line); match != "" && !excludePatterns.MatchString(line) {
-							styled := strings.TrimSpace(strings.Replace(line, match, styleMatch(match), 1))
-							mu.Lock()
-							matches = append(matches, styleFile(path)+styleLineNo(fmt.Sprintf(":%.4d", lineNo))+" "+styled)
-							matchFiles[path]++
-							mu.Unlock()
-							p.Send(msgMatch{})
-						}
-					}
-				}
-			}(path)
+				p.Send(msgCurrentFile{path: path, percent: percent})
+			},
+			OnMatch: func(path string, lineNo int, line, match string) {
+				styled := strings.TrimSpace(strings.Replace(line, match, styleMatch(match), 1))
+				mu.Lock()
+				matches = append(matches, styleFile(path)+styleLineNo(fmt.Sprintf(":%.4d", lineNo))+" "+styled)
+				mu.Unlock()
+				p.Send(msgMatch{})
+			},
 		}
 
-		// Ensure all goroutines are done.
-		wg.Wait()
+		scanRes := scanDirectory(opts)
+		resultsCh <- scanRes
 		p.Send(msgDone{})
 	}()
 
-	// Start the UI loop
 	if _, err := p.Run(); err != nil {
 		return fmt.Errorf("UI error: %w", err)
 	}
 
-	// Display results
+	scanRes := <-resultsCh
+	filenames := scanRes.Filenames
+
 	fmt.Println("\nResults:")
 	slices.Sort(matches)
 	for _, match := range matches {
 		fmt.Println(match)
 	}
 
-	// Print top 10 files with most secrets if applicable
 	if len(filenames) > 10 {
 		type fileCount struct {
 			path  string
 			count int
 		}
 		var fileCounts []fileCount
-		for path, count := range matchFiles {
-			fileCounts = append(fileCounts, fileCount{path, count})
+		for path, count := range scanRes.MatchFiles {
+			fileCounts = append(fileCounts, fileCount{path: path, count: count})
 		}
 		sort.Slice(fileCounts, func(i, j int) bool {
 			return fileCounts[i].count > fileCounts[j].count
@@ -364,10 +892,16 @@ func runPasshog(directory string, extensions []string, outputPath string) error 
 		}
 	}
 
-	fmt.Printf("\nCompleted in %s: %d matches across %d of %d files\n",
-		time.Since(start).Truncate(time.Millisecond), len(matches), len(matchFiles), len(filenames))
+	filesWithMatches := 0
+	for _, count := range scanRes.MatchFiles {
+		if count > 0 {
+			filesWithMatches++
+		}
+	}
 
-	// Write results to file if specified
+	fmt.Printf("\nCompleted in %s: %d matches across %d of %d files\n",
+		time.Since(start).Truncate(time.Millisecond), len(matches), filesWithMatches, len(filenames))
+
 	if outputPath != "" {
 		if err := writeResults(matches, outputPath); err != nil {
 			return fmt.Errorf("failed to write results: %w", err)

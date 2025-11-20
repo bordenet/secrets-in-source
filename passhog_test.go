@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"os"
@@ -421,7 +422,7 @@ func TestRunPasshogValidation(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		err = runPasshog(tmpFile, defaultExtensions, "")
+		err = runPasshog(tmpFile, defaultExtensions, nil, PatternFiles{}, "")
 		if err == nil {
 			t.Error("expected error when passing file instead of directory")
 		}
@@ -509,7 +510,7 @@ func TestLargeFileScanning(t *testing.T) {
 	}
 
 	outputFile := filepath.Join(t.TempDir(), "results.txt")
-	err = runPasshog(tmpDir, []string{".py"}, outputFile)
+	err = runPasshog(tmpDir, []string{".py"}, nil, PatternFiles{}, outputFile)
 	if err != nil {
 		t.Fatalf("runPasshog failed: %v", err)
 	}
@@ -579,7 +580,7 @@ PASSWORD="secret"
 	}
 
 	outputFile := filepath.Join(t.TempDir(), "results.txt")
-	err = runPasshog(tmpDir, []string{".py"}, outputFile)
+	err = runPasshog(tmpDir, []string{".py"}, nil, PatternFiles{}, outputFile)
 	if err != nil {
 		t.Fatalf("runPasshog failed: %v", err)
 	}
@@ -592,5 +593,117 @@ PASSWORD="secret"
 	// Should only find the PASSWORD line, not the short lines
 	if !strings.Contains(string(resultContent), "PASSWORD") {
 		t.Error("expected to find PASSWORD")
+	}
+}
+
+func TestParseOutputFormat(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		input   string
+		want    OutputFormat
+		wantErr bool
+	}{
+		{"defaultEmpty", "", OutputFormatText, false},
+		{"textLower", "text", OutputFormatText, false},
+		{"textUpper", "TEXT", OutputFormatText, false},
+		{"jsonLower", "json", OutputFormatJSON, false},
+		{"jsonUpper", "JSON", OutputFormatJSON, false},
+		{"invalid", "yaml", "", true},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := parseOutputFormat(tt.input)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("expected error for input %q, got none", tt.input)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("parseOutputFormat(%q) unexpected error: %v", tt.input, err)
+			}
+			if got != tt.want {
+				t.Fatalf("parseOutputFormat(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestBuildUsageIncludesKeyFlags(t *testing.T) {
+	usage := buildUsage()
+
+	for _, token := range []string{"Usage: passhog", "--types", "--output", "--format", "--json", "--config"} {
+		if !strings.Contains(usage, token) {
+			t.Errorf("usage text missing %q", token)
+		}
+	}
+}
+
+func TestRunPasshogJSONWritesValidJSON(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	testFile := filepath.Join(tmpDir, "config.py")
+	content := `PASSWORD="secret"`
+	if err := os.WriteFile(testFile, []byte(content), 0o644); err != nil {
+		t.Fatalf("failed to write test file: %v", err)
+	}
+
+	outputFile := filepath.Join(tmpDir, "results.json")
+
+	if err := runPasshogJSON(tmpDir, []string{".py"}, nil, PatternFiles{}, outputFile); err != nil {
+		t.Fatalf("runPasshogJSON failed: %v", err)
+	}
+
+	data, err := os.ReadFile(outputFile)
+	if err != nil {
+		t.Fatalf("failed to read JSON output: %v", err)
+	}
+
+	var result JSONResult
+	if err := json.Unmarshal(data, &result); err != nil {
+		t.Fatalf("failed to unmarshal JSON output: %v", err)
+	}
+
+	if result.Directory != tmpDir {
+		t.Errorf("expected Directory %q, got %q", tmpDir, result.Directory)
+	}
+
+	if len(result.Extensions) != 1 || result.Extensions[0] != ".py" {
+		t.Errorf("unexpected Extensions: %#v", result.Extensions)
+	}
+
+	if len(result.Matches) == 0 {
+		t.Fatalf("expected at least one match, got zero")
+	}
+
+	foundConfig := false
+	for _, m := range result.Matches {
+		if m.File == "config.py" {
+			foundConfig = true
+			if m.Line <= 0 {
+				t.Errorf("expected positive line number, got %d", m.Line)
+			}
+			if !strings.Contains(m.LineSnippet, "PASSWORD") {
+				t.Errorf("expected line snippet to contain PASSWORD, got %q", m.LineSnippet)
+			}
+		}
+	}
+	if !foundConfig {
+		t.Errorf("expected a match in config.py, got %+v", result.Matches)
+	}
+
+	if result.Summary.TotalMatches != len(result.Matches) {
+		t.Errorf("summary total_matches %d != len(matches) %d", result.Summary.TotalMatches, len(result.Matches))
+	}
+	if result.Summary.TotalFilesScanned == 0 {
+		t.Errorf("expected TotalFilesScanned > 0")
+	}
+	if result.Summary.TotalFilesWithMatch == 0 {
+		t.Errorf("expected at least one file with matches")
 	}
 }

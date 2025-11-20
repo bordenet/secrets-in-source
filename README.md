@@ -13,8 +13,8 @@ A concurrent secrets scanner for source code repositories. Passhog detects hardc
 - **Concurrent scanning**: Leverages multiple CPU cores for parallel file processing
 - **Two-stage detection**: Fast preliminary screening followed by thorough pattern matching
 - **False positive filtering**: Configurable exclusion patterns to reduce noise
-- **Multiple output formats**: Terminal UI with progress tracking and optional file output
-- **Extensible patterns**: Customizable regex files for different secret types
+- **Multiple output formats**: Terminal UI with progress tracking, JSON output, and optional file output
+- **Extensible patterns**: Customizable regex files for different secret types, including optional pattern file overrides via config
 - **Cross-platform**: Builds for Linux, macOS, and Windows
 
 ## Installation
@@ -93,6 +93,60 @@ passhog ~/terraform --types=tf,yml,yaml,env
 
 # Scan entire codebase with default extensions
 passhog ~/repositories/myproject
+```
+
+### JSON Output
+
+Passhog can produce machine-readable JSON output suitable for CI pipelines and tooling.
+
+```bash
+# Write JSON results to a file
+passhog /path/to/repository --format=json --output=results.json
+
+# Equivalent shorthand
+passhog /path/to/repository --json --output=results.json
+```
+
+The JSON structure includes fields for the scanned directory, extensions, matches, a summary, and top files by match count.
+
+### Configuration File
+
+Passhog supports an optional configuration file in the current working directory named `passhog.yaml`, or a custom path supplied via `--config`.
+
+Example `passhog.yaml`:
+
+```yaml
+# Directory is optional; the CLI argument remains the primary source
+# directory: ./
+
+extensions:
+  - .py
+  - .js
+
+exclude_dirs:
+  - build
+  - vendor
+
+output:
+  format: json
+  path: results.json
+
+patterns:
+  fast: custom_fast_patterns.regex
+  strict: custom_strict_patterns.regex
+  exclude: custom_exclude_patterns.regex
+```
+
+Precedence rules:
+
+- CLI flags override config file values.
+- Config file values override built-in defaults.
+- Additional `exclude_dirs` entries extend the built-in excluded directories (such as `.git` and `node_modules`).
+
+Use `--config` to select a specific configuration file:
+
+```bash
+passhog /path/to/repository --config=/path/to/passhog.yaml
 ```
 
 ### Example Output
