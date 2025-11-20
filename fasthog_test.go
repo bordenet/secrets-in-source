@@ -423,7 +423,7 @@ func TestRunFasthogValidation(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		err = runFasthog(tmpFile, defaultExtensions, nil, PatternFiles{}, "")
+		err = runFasthogJSON(tmpFile, defaultExtensions, nil, PatternFiles{}, "")
 		if err == nil {
 			t.Error("expected error when passing file instead of directory")
 		}
@@ -510,10 +510,10 @@ func TestLargeFileScanning(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	outputFile := filepath.Join(t.TempDir(), "results.txt")
-	err = runFasthog(tmpDir, []string{".py"}, nil, PatternFiles{}, outputFile)
+	outputFile := filepath.Join(t.TempDir(), "results.json")
+	err = runFasthogJSON(tmpDir, []string{".py"}, nil, PatternFiles{}, outputFile)
 	if err != nil {
-		t.Fatalf("runFasthog failed: %v", err)
+		t.Fatalf("runFasthogJSON failed: %v", err)
 	}
 
 	resultContent, err := os.ReadFile(outputFile)
@@ -524,8 +524,8 @@ func TestLargeFileScanning(t *testing.T) {
 	if !strings.Contains(string(resultContent), "PASSWORD") {
 		t.Error("expected to find PASSWORD in large file")
 	}
-	if !strings.Contains(string(resultContent), "0501") {
-		t.Error("expected to find line number 501")
+	if !strings.Contains(string(resultContent), "\"line\": 501") {
+		t.Error("expected to find line number 501 in JSON")
 	}
 }
 
@@ -580,10 +580,10 @@ PASSWORD="secret"
 		t.Fatal(err)
 	}
 
-	outputFile := filepath.Join(t.TempDir(), "results.txt")
-	err = runFasthog(tmpDir, []string{".py"}, nil, PatternFiles{}, outputFile)
+	outputFile := filepath.Join(t.TempDir(), "results.json")
+	err = runFasthogJSON(tmpDir, []string{".py"}, nil, PatternFiles{}, outputFile)
 	if err != nil {
-		t.Fatalf("runFasthog failed: %v", err)
+		t.Fatalf("runFasthogJSON failed: %v", err)
 	}
 
 	resultContent, err := os.ReadFile(outputFile)
