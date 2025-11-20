@@ -1,0 +1,37 @@
+# Binaries
+passhog
+passhog.exe
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test binaries
+*.test
+
+# Output files
+passhog_results*.txt
+trufflehog_all.json
+passhog_all.txt
+
+# Coverage
+*.out
+coverage.html
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.log
+
+# AI instructions
+.github/instructions/codacy.instructions.md

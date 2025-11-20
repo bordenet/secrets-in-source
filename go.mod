@@ -1,4 +1,4 @@
-module ghe.exm-platform.com/passhog
+module github.com/mattbordenet/passhog
 
 go 1.23.3
 

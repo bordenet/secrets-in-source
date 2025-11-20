@@ -1,25 +1,26 @@
-// Passhog is a quick-and-dirty secrets-in-source detection tool that scans a
-// directory for files with certain extensions and then scans those files for
-// secrets using a set of regular expressions. It is a Go port of the original
-// passhog.sh script.
+// Package main implements passhog, a secrets detection tool for source code repositories.
 //
-// Usage: passhog <directory> [--types=<extensions list>] [--output=<output_file>]
+// Passhog scans directories for potential secrets and credentials using configurable
+// regular expression patterns. It employs a two-stage detection approach with fast
+// preliminary patterns and strict validation patterns, while filtering out known
+// false positives.
 //
-//	<directory>   The directory to scan for files.
-//	[--types=<extensions list>]  Optional comma-separated list of file extensions to include (e.g., yml,yaml,sh).
-//	[--output=<file.txt>]    Optional output file to save results.
+// Usage:
+//
+//	passhog <directory> [--types=<extensions>] [--output=<file>]
+//
+// Arguments:
+//
+//	directory              Directory to scan for secrets
+//	--types=<extensions>   Comma-separated file extensions to scan (e.g., py,js,yml)
+//	--output=<file>        Write results to specified file
 //
 // Example:
 //
-//	go run passhog.go /path/to/directory --types=js,py,sh --output=results.txt
+//	passhog /path/to/repo --types=py,js --output=results.txt
 //
-// The script will scan the directory for files with the specified extensions
-// and then scan those files for secrets using a set of regular expressions.
-// The results will be printed to the console.
-// Passhog.go will also print the top 10 files with the most secrets found.
-//
-// Spot a false-positive? Help us fine-tune the regexes by submitting a PR to
-// the passhog repository.
+// The tool uses concurrent processing to scan multiple files in parallel,
+// with the number of workers matching the available CPU cores.
 package main
 
 import (
@@ -46,7 +47,7 @@ import (
 //go:embed *.regex
 var regexFS embed.FS
 
-// UI styles
+// UI styles for terminal output formatting.
 var (
 	styleFile        = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("4")).Render
 	styleLineNo      = lipgloss.NewStyle().Foreground(lipgloss.Color("#888")).Render
@@ -55,31 +56,31 @@ var (
 	styleTableRow    = lipgloss.NewStyle().Render
 )
 
-var excludeDirs = []string{
-	".git", ".github", "node_modules", "vendor", ".idea", ".vscode", "stella_deploy", "secrets_in_source",
+// defaultExcludeDirs contains directory names to skip during scanning.
+var defaultExcludeDirs = []string{
+	".git", ".github", "node_modules", "vendor", ".idea", ".vscode",
 }
 
-var extensions = []string{
-	".js", ".json", ".py", ".cs", ".go", ".java", ".sh", ".tf", ".yml", ".yaml", ".env", "env", ".ENV", "ENV", ".key", ".bookingengine", ".backup", ".tfstate", ".ts", ".txt", ".md", ".properties",
+// defaultExtensions contains file extensions to scan when no specific types are provided.
+var defaultExtensions = []string{
+	".js", ".json", ".py", ".cs", ".go", ".java", ".sh", ".tf", ".yml", ".yaml",
+	".env", "env", ".ENV", "ENV", ".key", ".backup", ".tfstate", ".ts", ".txt",
+	".md", ".properties",
 }
 
-func hasExtension(path string) bool {
-	return slices.ContainsFunc(extensions, func(ext string) bool {
-		return strings.HasSuffix(strings.ToLower(path), ext)
-	})
-}
-
-// shellReplacer replaces bash escape sequences present in the regex files with
-// their original characters to try and match the behavior of passhog.sh.
+// shellReplacer replaces bash escape sequences in regex files to maintain
+// compatibility with the original shell script implementation.
 var shellReplacer = strings.NewReplacer(`\\`, `\`, `\"`, `"`)
 
-// Load and combine regexes from one or more files into one pre-compiled regex.
-func loadRegexes(filesystem fs.FS, paths ...string) *regexp.Regexp {
-	regexes := ""
+// loadRegexes loads and compiles regular expressions from one or more embedded files.
+// It combines all patterns into a single compiled regex for efficient matching.
+// Lines starting with '#' are treated as comments and ignored.
+func loadRegexes(filesystem fs.FS, paths ...string) (*regexp.Regexp, error) {
+	var regexes string
 	for _, path := range paths {
 		b, err := fs.ReadFile(filesystem, path)
 		if err != nil {
-			panic(fmt.Errorf("unable to load regexes from %s: %w", path, err))
+			return nil, fmt.Errorf("unable to load regexes from %s: %w", path, err)
 		}
 		for _, line := range bytes.Split(b, []byte("\n")) {
 			if len(line) == 0 || line[0] == '#' {
@@ -92,36 +93,50 @@ func loadRegexes(filesystem fs.FS, paths ...string) *regexp.Regexp {
 		}
 	}
 
-	// fmt.Println(paths, regexes)
 	regexes = shellReplacer.Replace(regexes)
-	return regexp.MustCompile(regexes)
+	compiled, err := regexp.Compile(regexes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to compile regex patterns: %w", err)
+	}
+	return compiled, nil
 }
 
-// UI messages for handling updates.
-type (
-	msgCurrentFile struct {
-		path    string
-		percent float64
-	}
-	msgMatch struct{}
-	msgDone  struct{}
-)
+// hasExtension checks if a file path has one of the specified extensions.
+func hasExtension(path string, extensions []string) bool {
+	return slices.ContainsFunc(extensions, func(ext string) bool {
+		return strings.HasSuffix(strings.ToLower(path), ext)
+	})
+}
 
-// model is for handling updates and drawing the UI.
+// UI message types for the Bubble Tea interface.
+
+// msgCurrentFile indicates progress through the file list.
+type msgCurrentFile struct {
+	path    string
+	percent float64
+}
+
+// msgMatch indicates a secret was found.
+type msgMatch struct{}
+
+// msgDone indicates scanning is complete.
+type msgDone struct{}
+
+// model holds the UI state for the progress display.
 type model struct {
 	currentFile string
 	percent     float64
 	matches     int
 	progress    progress.Model
-	width       int
 }
 
+// Init initializes the model. Required by tea.Model interface.
 func (m model) Init() tea.Cmd {
 	return nil
 }
 
+// Update handles UI events and updates the model state.
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	// Handle a UI event, update the model, and after this it will redraw.
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.progress.Width = msg.Width
@@ -142,8 +157,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// View renders the UI display showing current progress and match count.
 func (m model) View() string {
-	// Draw the UI. This gets called after every update event, including before quit.
 	matchCount := fmt.Sprintf("%d", m.matches)
 	currentFile := m.currentFile
 	space := m.progress.Width - len("Matches: "+matchCount) - 15
@@ -157,32 +172,28 @@ func (m model) View() string {
 }
 
 func main() {
-	// Define a custom flag for output that properly handles the --output=value format
 	var outputPath string
 	pflag.StringVar(&outputPath, "output", "", "Path where output should be written")
 
-	// Initialize extensions as empty
 	var extensionsList string
 	pflag.StringVar(&extensionsList, "types", "", "Comma-separated list of file extensions to include (e.g., yml,yaml,sh)")
 
-	// Parse flags but don't require them to be in a specific order
 	pflag.Parse()
 
-	// After parsing flags, the remaining args will be in pflag.Args()
 	remainingArgs := pflag.Args()
 
 	if len(remainingArgs) < 1 {
-		fmt.Println("Usage: go run passhog.go <directory> [--types=<extensions>] [--output=<output_file>]")
-		fmt.Println("  <directory>   The directory to scan for files.")
-		fmt.Println("  [--types]     Optional comma-separated list of file extensions to include (e.g., yml,yaml,sh).")
-		fmt.Println("  [--output]    Optional output file to save results.")
+		fmt.Println("Usage: passhog <directory> [--types=<extensions>] [--output=<file>]")
+		fmt.Println("  <directory>   Directory to scan for secrets")
+		fmt.Println("  [--types]     Comma-separated file extensions (e.g., yml,yaml,sh)")
+		fmt.Println("  [--output]    Output file for results")
 		os.Exit(1)
 	}
 
-	// The first non-flag argument is always the directory
 	directory := remainingArgs[0]
 
-	// Parse extensions if provided
+	// Parse extensions or use defaults
+	extensions := defaultExtensions
 	if extensionsList != "" {
 		extensions = strings.Split(extensionsList, ",")
 		for i, ext := range extensions {
@@ -192,54 +203,79 @@ func main() {
 		}
 	}
 
-	// Print the parsed arguments for verification
 	fmt.Printf("Directory: %s\n", directory)
-	if len(extensions) > 0 {
+	if extensionsList != "" {
 		fmt.Printf("Extensions: %v\n", extensions)
 	} else {
-		fmt.Println("Extensions: None specified, will scan all files")
+		fmt.Println("Extensions: Using defaults")
 	}
 	if outputPath != "" {
-		fmt.Printf("Output Path: %s\n", outputPath)
-	} else {
-		fmt.Println("Output Path: None specified, will print to stdout")
+		fmt.Printf("Output: %s\n", outputPath)
 	}
 
-	// Run the actual passhog scan
-	runPasshog(directory, extensions, outputPath)
+	if err := runPasshog(directory, extensions, outputPath); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
 }
 
-// Function to run the actual passhog scan
-func runPasshog(directory string, extensions []string, outputPath string) {
+// runPasshog executes the secrets scanning process on the specified directory.
+// It returns an error if the scan fails.
+func runPasshog(directory string, extensions []string, outputPath string) error {
 	start := time.Now()
 
-	// Load regexes.
-	excludePatterns := loadRegexes(regexFS, "exclude_patterns.regex")
-	fastPatterns := loadRegexes(regexFS, "direct_matches.regex", "fast_patterns.regex")
-	slowPatterns := loadRegexes(regexFS, "direct_matches.regex", "strict_patterns.regex")
+	// Validate directory exists and is accessible
+	info, err := os.Stat(directory)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("directory does not exist: %s", directory)
+		}
+		return fmt.Errorf("cannot access directory: %w", err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("path is not a directory: %s", directory)
+	}
 
-	// Set up the UI.
+	// Load and compile regex patterns
+	excludePatterns, err := loadRegexes(regexFS, "exclude_patterns.regex")
+	if err != nil {
+		return fmt.Errorf("failed to load exclude patterns: %w", err)
+	}
+	fastPatterns, err := loadRegexes(regexFS, "direct_matches.regex", "fast_patterns.regex")
+	if err != nil {
+		return fmt.Errorf("failed to load fast patterns: %w", err)
+	}
+	slowPatterns, err := loadRegexes(regexFS, "direct_matches.regex", "strict_patterns.regex")
+	if err != nil {
+		return fmt.Errorf("failed to load strict patterns: %w", err)
+	}
+
+	// Set up the UI
 	p := tea.NewProgram(model{
 		progress: progress.New(progress.WithDefaultGradient()),
 	})
 
-	matches := []string{}
-	matchFiles := map[string]int{}
-	filenames := []string{}
+	var matches []string
+	matchFiles := make(map[string]int)
+	var filenames []string
 
-	// Walk the filesystem and test the files in a goroutine separate from the UI.
+	// Walk the filesystem and collect files to scan
 	go func() {
 		root := os.DirFS(directory)
-		fs.WalkDir(root, ".", func(path string, d fs.DirEntry, err error) error {
-			if err == nil && !d.IsDir() && hasExtension(path) {
-				parts := strings.Split(path, "/")
-				for _, excludeDir := range excludeDirs {
-					if slices.Contains(parts, excludeDir) {
-						return nil
-					}
-				}
-				filenames = append(filenames, path)
+		_ = fs.WalkDir(root, ".", func(path string, d fs.DirEntry, err error) error {
+			if err != nil || d.IsDir() {
+				return nil
 			}
+			if !hasExtension(path, extensions) {
+				return nil
+			}
+			parts := strings.Split(path, "/")
+			for _, excludeDir := range defaultExcludeDirs {
+				if slices.Contains(parts, excludeDir) {
+					return nil
+				}
+			}
+			filenames = append(filenames, path)
 			return nil
 		})
 
@@ -260,7 +296,11 @@ func runPasshog(directory string, extensions []string, outputPath string) {
 				if err != nil {
 					panic(fmt.Errorf("unable to open file %s: %w", path, err))
 				}
-				defer f.Close()
+				defer func() {
+					if closeErr := f.Close(); closeErr != nil {
+						panic(fmt.Errorf("failed to close file %s: %w", path, closeErr))
+					}
+				}()
 
 				scanner := bufio.NewScanner(f)
 				lineNo := 0
@@ -289,19 +329,19 @@ func runPasshog(directory string, extensions []string, outputPath string) {
 		p.Send(msgDone{})
 	}()
 
-	// Start the UI loop.
+	// Start the UI loop
 	if _, err := p.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("UI error: %w", err)
 	}
 
+	// Display results
 	fmt.Println("\nResults:")
 	slices.Sort(matches)
 	for _, match := range matches {
 		fmt.Println(match)
 	}
 
-	// Print the top 10 files in a table format if more than 10 files were scanned
+	// Print top 10 files with most secrets if applicable
 	if len(filenames) > 10 {
 		type fileCount struct {
 			path  string
@@ -324,29 +364,41 @@ func runPasshog(directory string, extensions []string, outputPath string) {
 		}
 	}
 
-	fmt.Printf("\nDone in %s with %d matches across %d of %d checked files\n", time.Since(start).Truncate(time.Millisecond), len(matches), len(matchFiles), len(filenames))
+	fmt.Printf("\nCompleted in %s: %d matches across %d of %d files\n",
+		time.Since(start).Truncate(time.Millisecond), len(matches), len(matchFiles), len(filenames))
 
-	// If output file is specified, write results to the file
+	// Write results to file if specified
 	if outputPath != "" {
-		file, err := os.Create(outputPath)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error creating output file: %v\n", err)
-			os.Exit(1)
+		if err := writeResults(matches, outputPath); err != nil {
+			return fmt.Errorf("failed to write results: %w", err)
 		}
-		defer file.Close()
-
-		writer := bufio.NewWriter(file)
-		re := regexp.MustCompile(`\x1b\[[0-9;]*m`) // Regex to strip ANSI characters
-
-		for _, match := range matches {
-			_, err := writer.WriteString(re.ReplaceAllString(match, "") + "\n")
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "error writing to output file: %v\n", err)
-				os.Exit(1)
-			}
-		}
-
-		writer.Flush()
 		fmt.Printf("Results written to %s\n", outputPath)
 	}
+
+	return nil
+}
+
+// writeResults writes scan results to a file, stripping ANSI color codes.
+func writeResults(matches []string, outputPath string) error {
+	file, err := os.Create(outputPath)
+	if err != nil {
+		return fmt.Errorf("failed to create output file: %w", err)
+	}
+	defer func() {
+		_ = file.Close() // Best effort close
+	}()
+
+	writer := bufio.NewWriter(file)
+
+	// Regex to strip ANSI color codes
+	ansiStripper := regexp.MustCompile(`\x1b\[[0-9;]*m`)
+
+	for _, match := range matches {
+		cleanMatch := ansiStripper.ReplaceAllString(match, "")
+		if _, err := writer.WriteString(cleanMatch + "\n"); err != nil {
+			return fmt.Errorf("failed to write match: %w", err)
+		}
+	}
+
+	return writer.Flush()
 }

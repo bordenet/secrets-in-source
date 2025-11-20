@@ -1,93 +1,229 @@
-It's NOT okay to have passwords and other secrets littered across your codebase.
-This simple go app makes detection quick and easy to locate them. From there, choose your own adventure.
-The regular expressions included in the various .regex files in this repo are included as samples.
+# passhog
 
-This project started as a bash shell script and was migrated to Go in collaboration with [danielgtaylor](https://github.com/danielgtaylor/danielgtaylor)
+A concurrent secrets scanner for source code repositories. Passhog detects hardcoded credentials, API keys, and other sensitive information using configurable regex patterns.
 
-Ensure you run preliminary results by the included "test" directory to ensure all Positive test cases are detected + none of the False Positives test cases slip through. Add new test cases opportunistically. 
+## Features
+
+- **Concurrent scanning**: Leverages multiple CPU cores for parallel file processing
+- **Two-stage detection**: Fast preliminary screening followed by thorough pattern matching
+- **False positive filtering**: Configurable exclusion patterns to reduce noise
+- **Multiple output formats**: Terminal UI with progress tracking and optional file output
+- **Extensible patterns**: Customizable regex files for different secret types
+- **Cross-platform**: Builds for Linux, macOS, and Windows
+
+## Installation
+
+### Prerequisites
+
+- Go 1.22 or later ([download](https://go.dev/dl/))
+
+### Install from source
+
+```bash
+git clone https://github.com/mattbordenet/passhog.git
+cd passhog
+go install
+```
+
+Ensure `~/go/bin` is in your `PATH` to run the installed binary.
+
+### Build from source
+
+```bash
+git clone https://github.com/mattbordenet/passhog.git
+cd passhog
+make build
+```
+
+The binary will be created in the current directory.
+
+### Cross-compilation
+
+Build for different platforms:
+
+```bash
+# Windows
+GOOS=windows GOARCH=amd64 go build -o passhog.exe
+
+# Linux
+GOOS=linux GOARCH=amd64 go build -o passhog
+
+# macOS (Apple Silicon)
+GOOS=darwin GOARCH=arm64 go build -o passhog
+```
 
 ## Usage
 
-This tool, passhog.go, is written in Go. It scans local directories for secrets based upon regular expressions. First, [install Go](https://go.dev/dl/), git clone this repo, and run:
+### Basic scanning
 
 ```bash
-# Navigate to the source
-$ cd secrets-in-source
+# Scan a directory
+passhog /path/to/repository
 
-# Run the Go implementation
-$ go run passhog.go <directory_path>
+# Scan specific file types
+passhog /path/to/repository --types=py,js,go
 
-# Or build/install the Go implementation (make sure `~/go/bin` is in your PATH!)
-$ go install
-$ passhog <directory_path>
+# Save results to file
+passhog /path/to/repository --output=results.txt
 
-$ passhog <directory_path> --types=py,cs
-$ passhog <directory_path> --output=./passhog_results.txt
-$ passhog <directory_path> --types=yml,yaml,env,tf --output=./passhog_results.txt
-
+# Combine options
+passhog /path/to/repository --types=yml,yaml,env,tf --output=results.txt
 ```
-That binary is self-contained & safe to bundle up and share with others. Want to cross compile? Just set some environment variables like `GOOS=windows GOARCH=amd64 go build` and you're good to go with `passhog.exe`.
 
-**Concrete examples:**
+### Running from source
+
 ```bash
-pushd secrets-in-source > /dev/null
-go run ./passhog.go /path/to/target --types=cs,py --output=passhog_results_cs_py.txt
-less ./passhog_results_cs_py.txt
-go run ./passhog.go /path/to/target
-popd > /dev/null
+go run passhog.go /path/to/repository
 ```
 
-## Test it
+### Examples
 
-`go test` will execute a battery of tests using `test/Positives.txt` and `test/False_Positives` and the `.regex` regular expression files consumed by passhog.go
-
-## How it works
-
-Here's how we make the Go version fast:
-
-1. Load and precompile all the regular expressions once.
-2. Do not shell out or run additional processes requiring startup time.
-3. Keep stats in memory, no temporary files.
-4. Run up to `runtime.NumCPU()` concurrent goroutines to process files so we can take advantage of multiple cores.
-5. Use a `bufio.Scanner` to read line-by-line so it interweaves file I/O & CPU (regex) workloads.
-
-## Regex Files
-
-The tool uses several regex pattern files for different purposes:
-
-- **`direct_matches.regex`**: High-confidence patterns for common secrets
-- **`fast_patterns.regex`**: Quick preliminary patterns used for initial filtering
-- **`strict_patterns.regex`**: More thorough patterns used for final detection
-- **`exclude_patterns.regex`**: Patterns to exclude false positives
-
-The scanning process uses a two-stage approach: files are first screened with fast patterns, then more thoroughly analyzed with strict patterns, while exclude patterns filter out false positives.
-
-## Alternative
-
-trufflehog is an industry standard tool for secrets-in-source detection. It's slower than our Go implementation, but results are of extremely high quality. This tool is also designed to work against GitHub repos, directly.
-
-`brew install trufflehog && trufflehog`
-
-## Tune it
-
-We consider trufflehog to be the industry-standard. There now exists a tool in the `test` subdirectory of this project which will compare results between the two tools. This will enable us to fine-tune the regular expressions until we get to within 10%, or so.  NOTE: passhog.go does not currently parse .zip files!
-
-Assuming your git repo clones reside in a directory ~/GitHub:
 ```bash
-trufflehog filesystem /Users/$(whoami)/GitHub --json  --concurrency=36 > trufflehog_all.json
-go run ./passhog.go /Users/$(whoami)/GitHub --output=passhog_all.txt
-pushd test
-go run ./secrets_gap_analysis.go -t ../trufflehog_all.json -p ../passhog_all.txt
-popd
+# Scan Python and C# files
+passhog ~/projects/myapp --types=py,cs --output=secrets_report.txt
+
+# Scan infrastructure files
+passhog ~/terraform --types=tf,yml,yaml,env
+
+# Scan entire codebase with default extensions
+passhog ~/repositories/myproject
 ```
-## Improve it
 
-When you detect a false-positive, you can add it as a test case to the bottom of `test/False_Positives.txt`. Then extend `exclude_patterns.regex` and re-run tests via `go test`
+## Architecture
 
-When you detect a missed secret, you can add it as a test case to the bottom of `test/Positives.txt`. Then extend one or more of the `.regex` files, e.g. `fast_patterns.regex` and `strict_patterns.regex`. Use `go test` to help narrow things down.
+### Scanning Process
 
-When tests are passing, submit a PR.
+Passhog uses a two-stage detection pipeline:
+
+1. **Fast screening**: Initial pass with lightweight patterns (`fast_patterns.regex`)
+2. **Strict validation**: Thorough analysis with comprehensive patterns (`strict_patterns.regex`)
+3. **False positive filtering**: Exclusion of known benign patterns (`exclude_patterns.regex`)
+
+### Performance Optimizations
+
+- **Precompiled patterns**: Regex patterns are compiled once at startup
+- **Concurrent processing**: Parallel file scanning using worker pools (up to `runtime.NumCPU()` workers)
+- **Streaming I/O**: Line-by-line buffered reading to optimize memory usage
+- **In-memory processing**: No temporary files or external process invocations
+
+## Pattern Files
+
+Passhog uses multiple regex pattern files for flexible detection:
+
+| File | Purpose |
+|------|---------|
+| `direct_matches.regex` | High-confidence patterns for common secrets |
+| `fast_patterns.regex` | Lightweight patterns for initial screening |
+| `strict_patterns.regex` | Comprehensive patterns for thorough detection |
+| `exclude_patterns.regex` | Patterns to filter false positives |
+
+### Customizing Patterns
+
+Edit the `.regex` files to add or modify detection patterns. Each file contains one regex pattern per line. Empty lines and lines starting with `#` are ignored.
+
+## Testing
+
+### Running Tests
+
+```bash
+# Run all tests
+go test ./...
+
+# Run tests with coverage
+make test-coverage
+
+# Run benchmarks
+make bench
+```
+
+### Test Cases
+
+The test suite validates pattern accuracy using:
+
+- `test/Positives.txt`: Known secrets that must be detected
+- `test/False_Positives.txt`: Benign patterns that should not trigger alerts
+
+### Adding Test Cases
+
+**For false positives:**
+
+1. Add the pattern to `test/False_Positives.txt`
+2. Update `exclude_patterns.regex` to filter it
+3. Run `go test` to verify
+
+**For missed secrets:**
+
+1. Add the secret to `test/Positives.txt`
+2. Update `fast_patterns.regex` and/or `strict_patterns.regex`
+3. Run `go test` to verify detection
+
+## Comparison with TruffleHog
+
+A gap analysis tool is provided in the `test` directory to compare results with TruffleHog:
+
+```bash
+# Generate TruffleHog results
+trufflehog filesystem ~/repositories --json --concurrency=36 > trufflehog.json
+
+# Generate passhog results
+passhog ~/repositories --output=passhog.txt
+
+# Compare results
+cd test
+go run secrets_gap_analysis.go -t ../trufflehog.json -p ../passhog.txt
+```
+
+**Note**: Passhog does not currently parse compressed archives (.zip, .tar.gz, etc.).
+
+## Development
+
+### Building
+
+```bash
+# Build binary
+make build
+
+# Install locally
+make install
+
+# Run linters
+make lint
+
+# Format code
+make fmt
+
+# Run all checks
+make check
+```
+
+### Project Structure
+
+```
+.
+├── passhog.go              # Main application
+├── *_test.go               # Test files
+├── *.regex                 # Pattern definition files
+├── test/
+│   ├── Positives.txt       # Known secrets for testing
+│   ├── False_Positives.txt # Benign patterns for testing
+│   └── secrets_gap_analysis.go  # TruffleHog comparison tool
+├── .github/workflows/      # CI/CD configuration
+└── Makefile                # Build automation
+```
+
+## Contributing
+
+Contributions are welcome. Please:
+
+1. Add test cases for new patterns
+2. Ensure all tests pass (`go test ./...`)
+3. Run linters (`make lint`)
+4. Update documentation as needed
 
 ## License
 
 This project is licensed under the MIT License – see the [LICENSE](./LICENSE) file for details.
+
+## Acknowledgments
+
+Originally developed as a bash script, migrated to Go in collaboration with [danielgtaylor](https://github.com/danielgtaylor).
