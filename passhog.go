@@ -430,6 +430,59 @@ func loadConfig(path string) (Config, error) {
 	return cfg, nil
 }
 
+// determineExtensions applies precedence rules to compute the effective
+// extension set used for scanning: CLI flag > config > defaults.
+func determineExtensions(extensionsFlag string, flagChanged bool, cfg Config) []string {
+	if flagChanged && extensionsFlag != "" {
+		parts := strings.Split(extensionsFlag, ",")
+		extensions := make([]string, 0, len(parts))
+		for _, ext := range parts {
+			ext = strings.TrimSpace(ext)
+			if ext == "" {
+				continue
+			}
+			if !strings.HasPrefix(ext, ".") {
+				ext = "." + ext
+			}
+			extensions = append(extensions, ext)
+		}
+		if len(extensions) > 0 {
+			return extensions
+		}
+	}
+
+	if len(cfg.Extensions) > 0 {
+		return append([]string(nil), cfg.Extensions...)
+	}
+
+	return defaultExtensions
+}
+
+// determineOutputFormat applies precedence between the --format flag,
+// the --json flag, and any configured output format.
+func determineOutputFormat(formatFlag string, formatFlagChanged bool, jsonFlag bool, jsonFlagChanged bool, cfg Config) (OutputFormat, error) {
+	formatValue := formatFlag
+	if jsonFlag {
+		formatValue = string(OutputFormatJSON)
+	}
+
+	if !formatFlagChanged && !jsonFlagChanged && cfg.Output.Format != "" {
+		formatValue = cfg.Output.Format
+	}
+
+	return parseOutputFormat(formatValue)
+}
+
+// determineOutputPath applies precedence between the --output flag and
+// any configured output path.
+func determineOutputPath(outputFlag string, flagChanged bool, cfg Config) string {
+	if !flagChanged && outputFlag == "" && cfg.Output.Path != "" {
+		return cfg.Output.Path
+	}
+
+	return outputFlag
+}
+
 // splitKeyValue splits a "key: value" YAML line into key and value components.
 func splitKeyValue(s string) (key, value string) {
 	parts := strings.SplitN(s, ":", 2)
@@ -659,46 +712,26 @@ func main() {
 	}
 
 	// Determine extensions: CLI > config > defaults.
-	var extensions []string
-	if pflag.Lookup("types").Changed && extensionsList != "" {
-		extParts := strings.Split(extensionsList, ",")
-		extensions = make([]string, len(extParts))
-		for i, ext := range extParts {
-			if !strings.HasPrefix(ext, ".") {
-				extensions[i] = "." + ext
-			} else {
-				extensions[i] = ext
-			}
-		}
-	} else if len(fileCfg.Extensions) > 0 {
-		extensions = append([]string(nil), fileCfg.Extensions...)
-	} else {
-		extensions = defaultExtensions
-	}
+	extensions := determineExtensions(extensionsList, pflag.Lookup("types").Changed, fileCfg)
 
 	// Determine additional excluded directories from config.
 	excludeDirs := append([]string(nil), fileCfg.ExcludeDirs...)
 
 	// Determine output format: CLI (--json or --format) > config > default(text).
-	formatValue := formatFlag
-	if jsonFlag {
-		formatValue = string(OutputFormatJSON)
-	}
-
-	if !pflag.Lookup("format").Changed && !pflag.Lookup("json").Changed && fileCfg.Output.Format != "" {
-		formatValue = fileCfg.Output.Format
-	}
-
-	outputFormat, err := parseOutputFormat(formatValue)
+	outputFormat, err := determineOutputFormat(
+		formatFlag,
+		pflag.Lookup("format").Changed,
+		jsonFlag,
+		pflag.Lookup("json").Changed,
+		fileCfg,
+	)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}
 
 	// Determine output path: CLI > config.
-	if !pflag.Lookup("output").Changed && outputPath == "" && fileCfg.Output.Path != "" {
-		outputPath = fileCfg.Output.Path
-	}
+	outputPath = determineOutputPath(outputPath, pflag.Lookup("output").Changed, fileCfg)
 
 	if outputFormat == OutputFormatText {
 		fmt.Printf("Directory: %s\n", directory)

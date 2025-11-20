@@ -107,7 +107,19 @@ passhog /path/to/repository --format=json --output=results.json
 passhog /path/to/repository --json --output=results.json
 ```
 
-The JSON structure includes fields for the scanned directory, extensions, matches, a summary, and top files by match count.
+The JSON structure includes fields for the scanned directory, extensions, matches, a summary, and top files by match count. A truncated example:
+
+```json
+{
+  "directory": "/path/to/repository",
+  "extensions": [".py", ".js"],
+  "summary": {
+    "total_matches": 3,
+    "total_files_with_matches": 2,
+    "total_files_scanned": 127
+  }
+}
+```
 
 ### Configuration File
 

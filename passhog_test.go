@@ -707,3 +707,179 @@ func TestRunPasshogJSONWritesValidJSON(t *testing.T) {
 		t.Errorf("expected at least one file with matches")
 	}
 }
+func TestLoadConfigParsesExpectedFields(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "passhog.yaml")
+
+	configYAML := `
+directory: ./src
+extensions:
+  - .go
+  - py
+exclude_dirs:
+  - build
+  - vendor
+output:
+  path: out.json
+  format: json
+patterns:
+  direct: direct.regex
+  fast: fast.regex
+  strict: strict.regex
+  exclude: exclude.regex
+`
+
+	if err := os.WriteFile(path, []byte(configYAML), 0644); err != nil {
+		t.Fatalf("failed to write config file: %v", err)
+	}
+
+	cfg, err := loadConfig(path)
+	if err != nil {
+		t.Fatalf("loadConfig returned error: %v", err)
+	}
+
+	if cfg.Directory != "./src" {
+		t.Errorf("expected Directory ./src, got %q", cfg.Directory)
+	}
+
+	wantExtensions := []string{".go", ".py"}
+	if !slices.Equal(cfg.Extensions, wantExtensions) {
+		t.Errorf("unexpected Extensions: got %v, want %v", cfg.Extensions, wantExtensions)
+	}
+
+	wantExclude := []string{"build", "vendor"}
+	if !slices.Equal(cfg.ExcludeDirs, wantExclude) {
+		t.Errorf("unexpected ExcludeDirs: got %v, want %v", cfg.ExcludeDirs, wantExclude)
+	}
+
+	if cfg.Output.Path != "out.json" || cfg.Output.Format != "json" {
+		t.Errorf("unexpected Output config: %+v", cfg.Output)
+	}
+
+	if cfg.Patterns.Direct != "direct.regex" || cfg.Patterns.Fast != "fast.regex" ||
+		cfg.Patterns.Strict != "strict.regex" || cfg.Patterns.Exclude != "exclude.regex" {
+		t.Errorf("unexpected Patterns config: %+v", cfg.Patterns)
+	}
+}
+
+func TestLoadConfigIgnoresUnknownKeys(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+
+	configYAML := `
+unknown: value
+extensions:
+  - .py
+another_unknown:
+  nested: value
+`
+
+	if err := os.WriteFile(path, []byte(configYAML), 0644); err != nil {
+		t.Fatalf("failed to write config file: %v", err)
+	}
+
+	cfg, err := loadConfig(path)
+	if err != nil {
+		t.Fatalf("loadConfig returned error: %v", err)
+	}
+
+	if len(cfg.Extensions) != 1 || cfg.Extensions[0] != ".py" {
+		t.Errorf("unexpected Extensions: %#v", cfg.Extensions)
+	}
+}
+
+func TestSplitKeyValue(t *testing.T) {
+	key, value := splitKeyValue("foo: bar")
+	if key != "foo" || value != "bar" {
+		t.Errorf("splitKeyValue unexpected result: key=%q value=%q", key, value)
+	}
+
+	key, value = splitKeyValue("no_value:")
+	if key != "no_value" || value != "" {
+		t.Errorf("splitKeyValue unexpected result for no_value: key=%q value=%q", key, value)
+	}
+
+	key, value = splitKeyValue("justkey")
+	if key != "justkey" || value != "" {
+		t.Errorf("splitKeyValue unexpected result for justkey: key=%q value=%q", key, value)
+	}
+}
+
+func TestDetermineExtensionsPrecedence(t *testing.T) {
+	cfg := Config{Extensions: []string{".tf", ".yaml"}}
+
+	// CLI flag should win over config and defaults.
+	exts := determineExtensions("py,go", true, cfg)
+	if !slices.Equal(exts, []string{".py", ".go"}) {
+		t.Errorf("determineExtensions CLI precedence: got %v", exts)
+	}
+
+	// Config should be used when flag is not changed.
+	exts = determineExtensions("", false, cfg)
+	if !slices.Equal(exts, cfg.Extensions) {
+		t.Errorf("determineExtensions config precedence: got %v, want %v", exts, cfg.Extensions)
+	}
+
+	// Defaults should be used when neither flag nor config provides extensions.
+	exts = determineExtensions("", false, Config{})
+	if !slices.Equal(exts, defaultExtensions) {
+		t.Errorf("determineExtensions default precedence: got %v, want %v", exts, defaultExtensions)
+	}
+}
+
+func TestDetermineOutputFormatPrecedence(t *testing.T) {
+	cfg := Config{Output: OutputConfig{Format: "json"}}
+
+	t.Run("configUsedWhenNoFlags", func(t *testing.T) {
+		format, err := determineOutputFormat("", false, false, false, cfg)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if format != OutputFormatJSON {
+			t.Errorf("expected JSON format from config, got %q", format)
+		}
+	})
+
+	t.Run("cliFormatOverridesConfig", func(t *testing.T) {
+		format, err := determineOutputFormat("text", true, false, false, cfg)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if format != OutputFormatText {
+			t.Errorf("expected text format from CLI, got %q", format)
+		}
+	})
+
+	t.Run("jsonFlagOverridesConfig", func(t *testing.T) {
+		format, err := determineOutputFormat("text", false, true, true, cfg)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if format != OutputFormatJSON {
+			t.Errorf("expected JSON format from --json flag, got %q", format)
+		}
+	})
+
+	t.Run("invalidFormatReturnsError", func(t *testing.T) {
+		_, err := determineOutputFormat("yaml", true, false, false, Config{})
+		if err == nil {
+			t.Fatal("expected error for invalid output format")
+		}
+	})
+}
+
+func TestDetermineOutputPathPrecedence(t *testing.T) {
+	cfg := Config{Output: OutputConfig{Path: "config_results.txt"}}
+
+	// Config path should be used when flag is not changed.
+	got := determineOutputPath("", false, cfg)
+	if got != "config_results.txt" {
+		t.Errorf("expected config output path, got %q", got)
+	}
+
+	// CLI flag should override config.
+	got = determineOutputPath("cli_results.txt", true, cfg)
+	if got != "cli_results.txt" {
+		t.Errorf("expected CLI output path, got %q", got)
+	}
+}
