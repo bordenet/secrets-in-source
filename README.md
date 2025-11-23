@@ -310,6 +310,24 @@ Contributions are welcome. Please:
 3. Run linters (`make lint`)
 4. Update documentation as needed
 
+---
+
+## Code Coverage
+
+Secrets-in-Source maintains comprehensive test coverage with ongoing improvements. The coverage visualization below shows detailed coverage by module:
+
+[![Coverage Grid](https://codecov.io/gh/bordenet/secrets-in-source/graphs/tree.svg)](https://codecov.io/gh/bordenet/secrets-in-source)
+
+**What this means:**
+- **Green**: Well-tested code (>80% coverage)
+- **Yellow**: Moderate coverage (60-80%)
+- **Red**: Needs more tests (<60%)
+- **Size**: Larger boxes = more lines of code
+
+Click the image to explore detailed coverage reports on Codecov, including line-by-line coverage, branch coverage, and historical trends.
+
+---
+
 ## License
 
 This project is licensed under the MIT License. See the [LICENSE](./LICENSE) file for details.
