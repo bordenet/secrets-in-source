@@ -1,3 +1,5 @@
+# golangci-lint configuration for fasthog
+# Based on best practices from bordenet/codebase-reviewer
 version: "2"
 
 run:
@@ -5,7 +7,38 @@ run:
 
 linters:
   enable:
-    - errcheck
-    - govet
-    - staticcheck
-    - unused
+    # Core linters (enabled by default)
+    - errcheck      # Check for unchecked errors
+    - govet         # Vet examines Go source code
+    - ineffassign   # Detect ineffectual assignments
+    - staticcheck   # Static analysis checks
+    - unused        # Check for unused code
+
+    # Code quality linters
+    - misspell      # Check for misspelled words
+    - revive        # Fast, configurable, extensible linter
+    - unconvert     # Remove unnecessary type conversions
+    - unparam       # Find unused function parameters
+    - goconst       # Find repeated strings that could be constants
+    - gocyclo       # Check cyclomatic complexity
+    - dupl          # Check for duplicate code
+    - gocritic      # Comprehensive Go linter
+    - prealloc      # Find slice declarations that could be preallocated
+    - nolintlint    # Ensure nolint directives are properly used
+    - whitespace    # Check for unnecessary whitespace
+    - bodyclose     # Check HTTP response bodies are closed
+    - errorlint     # Find code that will cause problems with Go 1.13+ error wrapping
+
+linters-settings:
+  goconst:
+    min-len: 3
+    min-occurrences: 5  # Increased to reduce noise
+
+  gocyclo:
+    min-complexity: 15
+
+  dupl:
+    threshold: 100
+
+  revive:
+    confidence: 0.8
