@@ -3,8 +3,10 @@
 [![CI](https://github.com/bordenet/secrets-in-source/actions/workflows/ci.yml/badge.svg)](https://github.com/bordenet/secrets-in-source/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/bordenet/secrets-in-source/branch/main/graph/badge.svg)](https://codecov.io/gh/bordenet/secrets-in-source)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/bordenet/secrets-in-source)](https://go.dev/)
-[![License](https://img.shields.io/github/license/bordenet/secrets-in-source)](./LICENSE)
 [![Go Report Card](https://goreportcard.com/badge/github.com/bordenet/secrets-in-source)](https://goreportcard.com/report/github.com/bordenet/secrets-in-source)
+[![Dependabot Status](https://img.shields.io/badge/Dependabot-enabled-success?logo=dependabot)](https://github.com/bordenet/secrets-in-source/network/updates)
+[![Security: govulncheck](https://img.shields.io/badge/security-govulncheck-blue?logo=go)](https://pkg.go.dev/golang.org/x/vuln/cmd/govulncheck)
+[![License](https://img.shields.io/github/license/bordenet/secrets-in-source)](./LICENSE)
 
 A concurrent secrets scanner for source code repositories. Fasthog detects hardcoded credentials, API keys, and other sensitive information using configurable regex patterns.
 
