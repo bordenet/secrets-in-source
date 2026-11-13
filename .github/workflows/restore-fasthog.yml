@@ -3,14 +3,21 @@ on:
   push:
     paths:
       - '.cursor-restore/fasthog.b64'
+      - '.github/workflows/restore-fasthog.yml'
+  workflow_dispatch:
 permissions:
   contents: write
+  pull-requests: write
 jobs:
   restore:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Restore fasthog_test.go
+        with:
+          fetch-depth: 0
+      - name: Restore fasthog_test.go onto branch and open PR
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euxo pipefail
           base64 -d < .cursor-restore/fasthog.b64 | gunzip > fasthog_test.go
@@ -19,9 +26,22 @@ jobs:
           head -c 12 fasthog_test.go | tee /tmp/head.txt
           grep -qx 'package main' /tmp/head.txt
           grep -F 'fmt.Fprintf(&content, "# Comment line' fasthog_test.go
+          BRANCH="cursor/restore-fasthog-f685"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$BRANCH"
           git add fasthog_test.go
+          git rm -f .github/workflows/qf1012-restore.yml || true
+          git rm -f .github/workflows/restore-fasthog.yml || true
+          git rm -rf .cursor-restore || true
           git status
-          git commit -m "fix(lint): restore fasthog_test.go and fix staticcheck QF1012"
-          git push
+          git commit -m "fix(lint): restore fasthog_test.go and fix staticcheck QF1012" || echo "no changes"
+          git push -u origin "$BRANCH" --force
+          if gh pr list --head "$BRANCH" --base main --json number --jq 'length' | grep -qx 0; then
+            gh pr create --base main --head "$BRANCH" \
+              --title "fix(lint): restore fasthog_test.go and fix staticcheck QF1012" \
+              --body "Restores fasthog_test.go (45088 bytes) from staged gzip+base64 payload. Also removes broken restore workflows/staging."
+          else
+            echo "PR already exists"
+            gh pr list --head "$BRANCH" --base main
+          fi
