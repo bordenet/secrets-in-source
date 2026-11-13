@@ -1,1 +1,1 @@
-package main
+$file:/tmp/GOOD_fasthog_test.go
