@@ -183,7 +183,7 @@ func TestIntegrationTopFilesReport(t *testing.T) {
 		secretCount := (i % 5) + 1
 		for j := 0; j < secretCount; j++ {
 			// Use patterns that will actually match the regex
-			fmt.Fprintf(content, `PASSWORD = "mysecretpassword%d%d"`+"\n", i, j)
+			fmt.Fprintf(&content, `PASSWORD = "mysecretpassword%d%d"`+"\n", i, j)
 		}
 
 		err := os.WriteFile(filename, []byte(content.String()), 0644)
