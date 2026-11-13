@@ -1,1 +1,1 @@
-$file:/tmp/GOOD_fasthog_test.go
+PLACEHOLDER
