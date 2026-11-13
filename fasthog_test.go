@@ -1,1 +1,1 @@
-WORKSPACE_FILE:/workspace/.fasthog_test_restore.go
+LOADING_FROM_ARGUMENTS_FILE
