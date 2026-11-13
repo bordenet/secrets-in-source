@@ -191,4 +191,218 @@ func TestLoadRegexes(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if re == nil {
-			t.Fatal("expect
+			t.Fatal("expected non-nil regex")
+		}
+	})
+
+	t.Run("nonexistent file", func(t *testing.T) {
+		_, err := loadRegexes(regexFS, "nonexistent.regex")
+		if err == nil {
+			t.Fatal("expected error for nonexistent file")
+		}
+	})
+
+	t.Run("invalid regex pattern", func(t *testing.T) {
+		// Create a test filesystem with invalid regex
+		testFS := fstest.MapFS{
+			"invalid.regex": &fstest.MapFile{
+				Data: []byte("(?P<invalid"),
+			},
+		}
+		_, err := loadRegexes(testFS, "invalid.regex")
+		if err == nil {
+			t.Error("expected error for invalid regex pattern")
+		}
+		if !strings.Contains(err.Error(), "failed to compile") {
+			t.Errorf("expected compile error, got: %v", err)
+		}
+	})
+}
+
+// TestWriteResults verifies output file writing.
+func TestWriteResults(t *testing.T) {
+	t.Run("write simple results", func(t *testing.T) {
+		tmpFile := t.TempDir() + "/results.txt"
+		matches := []string{"match1", "match2", "match3"}
+
+		err := writeResults(matches, tmpFile)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		content, err := os.ReadFile(tmpFile)
+		if err != nil {
+			t.Fatalf("failed to read output: %v", err)
+		}
+
+		expected := "match1\nmatch2\nmatch3\n"
+		if string(content) != expected {
+			t.Errorf("got %q, want %q", string(content), expected)
+		}
+	})
+
+	t.Run("strip ANSI codes", func(t *testing.T) {
+		tmpFile := t.TempDir() + "/results.txt"
+		matches := []string{
+			"\x1b[31mred text\x1b[0m",
+			"\x1b[1;32mbold green\x1b[0m",
+		}
+
+		err := writeResults(matches, tmpFile)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		content, err := os.ReadFile(tmpFile)
+		if err != nil {
+			t.Fatalf("failed to read output: %v", err)
+		}
+
+		expected := "red text\nbold green\n"
+		if string(content) != expected {
+			t.Errorf("got %q, want %q", string(content), expected)
+		}
+	})
+
+	t.Run("invalid path", func(t *testing.T) {
+		err := writeResults([]string{"test"}, "/invalid/path/results.txt")
+		if err == nil {
+			t.Fatal("expected error for invalid path")
+		}
+	})
+}
+
+// TestLoadLines verifies individual pattern loading for testing.
+func TestLoadLines(t *testing.T) {
+	t.Run("load exclude patterns", func(t *testing.T) {
+		lines, err := loadLines(regexFS, "exclude_patterns.regex")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(lines) == 0 {
+			t.Fatal("expected non-empty lines")
+		}
+		for _, line := range lines {
+			if line.line == "" {
+				t.Error("found empty pattern")
+			}
+			if line.path != "exclude_patterns.regex" {
+				t.Errorf("wrong path: got %q, want %q", line.path, "exclude_patterns.regex")
+			}
+		}
+	})
+
+	t.Run("nonexistent file", func(t *testing.T) {
+		_, err := loadLines(regexFS, "nonexistent.regex")
+		if err == nil {
+			t.Fatal("expected error for nonexistent file")
+		}
+	})
+}
+
+// TestModelUpdate verifies the UI model update logic.
+func TestModelUpdate(t *testing.T) {
+	m := model{
+		progress: progress.New(progress.WithDefaultGradient()),
+	}
+
+	t.Run("window size message", func(t *testing.T) {
+		msg := tea.WindowSizeMsg{Width: 100, Height: 50}
+		updated, _ := m.Update(msg)
+		updatedModel := updated.(model)
+		if updatedModel.progress.Width != 100 {
+			t.Errorf("expected width 100, got %d", updatedModel.progress.Width)
+		}
+	})
+
+	t.Run("current file message", func(t *testing.T) {
+		msg := msgCurrentFile{path: "test.py", percent: 0.5}
+		updated, _ := m.Update(msg)
+		updatedModel := updated.(model)
+		if updatedModel.currentFile != "test.py" {
+			t.Errorf("expected currentFile 'test.py', got %q", updatedModel.currentFile)
+		}
+		if updatedModel.percent != 0.5 {
+			t.Errorf("expected percent 0.5, got %f", updatedModel.percent)
+		}
+	})
+
+	t.Run("match message", func(t *testing.T) {
+		msg := msgMatch{}
+		updated, _ := m.Update(msg)
+		updatedModel := updated.(model)
+		if updatedModel.matches != 1 {
+			t.Errorf("expected matches 1, got %d", updatedModel.matches)
+		}
+	})
+
+	t.Run("done message", func(t *testing.T) {
+		msg := msgDone{}
+		updated, cmd := m.Update(msg)
+		updatedModel := updated.(model)
+		if updatedModel.percent != 100.0 {
+			t.Errorf("expected percent 100.0, got %f", updatedModel.percent)
+		}
+		if cmd == nil {
+			t.Error("expected quit command")
+		}
+	})
+}
+
+// TestModelView verifies the UI rendering.
+func TestModelView(t *testing.T) {
+	m := model{
+		currentFile: "test.py",
+		percent:     50.0,
+		matches:     5,
+		progress:    progress.New(progress.WithDefaultGradient()),
+	}
+	m.progress.Width = 80
+
+	view := m.View()
+	if view == "" {
+		t.Error("expected non-empty view")
+	}
+	if !strings.Contains(view, "test.py") {
+		t.Error("view should contain current file")
+	}
+	if !strings.Contains(view, "5") {
+		t.Error("view should contain match count")
+	}
+}
+
+// TestEdgeCases tests various edge cases.
+func TestEdgeCases(t *testing.T) {
+	t.Run("empty matches write", func(t *testing.T) {
+		tmpFile := t.TempDir() + "/empty.txt"
+		err := writeResults([]string{}, tmpFile)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		content, err := os.ReadFile(tmpFile)
+		if err != nil {
+			t.Fatalf("failed to read file: %v", err)
+		}
+		if len(content) != 0 {
+			t.Errorf("expected empty file, got %d bytes", len(content))
+		}
+	})
+
+	t.Run("very long file path", func(t *testing.T) {
+		longPath := strings.Repeat("a/", 100) + "file.py"
+		extensions := []string{".py"}
+		if !hasExtension(longPath, extensions) {
+			t.Error("should match extension on very long path")
+		}
+	})
+
+	t.Run("file path with special characters", func(t *testing.T) {
+		specialPath := "test-file_v2.0.py"
+		extensions := []string{".py"}
+		if !hasExtension(specialPath, extensions) {
+			t.Error("should match extension with special characters")
+		}
+	})
+
+	t.Run("extension only path", f
