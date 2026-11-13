@@ -169,4 +169,4 @@ func TestMergeExcludeDirs(t *testing.T) {
 		// Verify all extras are present
 		for _, dir := range extra {
 			if !slices.Contains(result, dir) {
-				t.Errorf("expected result to"}
+				t.Errorf("expected result to
