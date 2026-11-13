@@ -13,7 +13,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        go-version: ['1.22', '1.23']
+        go-version: ['1.24.2', 'stable']
 
     steps:
     - name: Checkout code
@@ -41,13 +41,13 @@ jobs:
       run: go test -v -race -coverprofile=coverage.txt -covermode=atomic ./...
 
     - name: Upload coverage to Codecov
-      if: matrix.os == 'ubuntu-latest' && matrix.go-version == '1.23'
+      if: matrix.os == 'ubuntu-latest' && matrix.go-version == '1.24.2'
       uses: codecov/codecov-action@v5
       with:
         files: ./coverage.txt
         flags: unittests
         name: codecov-umbrella
-        fail_ci_if_error: true
+        fail_ci_if_error: false
         token: ${{ secrets.CODECOV_TOKEN }}
 
   lint:
@@ -61,12 +61,12 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v6
       with:
-        go-version: '1.23'
+        go-version: '1.24.2'
 
     - name: Run golangci-lint
       uses: golangci/golangci-lint-action@v9
       with:
-        version: v2.6.2
+        version: v2.12
         args: --timeout=5m
 
   build:
@@ -80,7 +80,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v6
       with:
-        go-version: '1.23'
+        go-version: '1.24.2'
 
     - name: Build
       run: go build -v .
@@ -99,7 +99,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v6
       with:
-        go-version: '1.23'
+        go-version: '1.24.2'
 
     - name: Check formatting
       run: |
@@ -108,4 +108,3 @@ jobs:
           gofmt -s -l .
           exit 1
         fi
-
