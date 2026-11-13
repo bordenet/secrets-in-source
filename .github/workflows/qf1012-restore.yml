@@ -1,0 +1,43 @@
+name: qf1012-restore
+on:
+  push:
+    paths:
+      - .github/workflows/qf1012-restore.yml
+permissions:
+  contents: write
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Restore fasthog_test.go with QF1012 fix
+        run: |
+          set -euo pipefail
+          curl -fsSL "https://raw.githubusercontent.com/bordenet/secrets-in-source/43c8adaa7b72442de8305c30707c8e9581976668/fasthog_test.go" -o fasthog_test.go
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("fasthog_test.go")
+          t = p.read_text()
+          old = 'content.WriteString(fmt.Sprintf("# Comment line %d\\n", i))'
+          new = 'fmt.Fprintf(&content, "# Comment line %d\\n", i)'
+          if old not in t:
+              raise SystemExit("QF1012 pattern not found in restored file")
+          p.write_text(t.replace(old, new, 1))
+          if "fmt.Fprintf(&content" not in p.read_text():
+              raise SystemExit("fix missing after replace")
+          print("restored", p.stat().st_size, "bytes")
+          PY
+      - name: Commit restored file
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add fasthog_test.go
+          if git diff --cached --quiet; then
+            echo "no changes"
+            exit 0
+          fi
+          git commit -m "fix(lint): use fmt.Fprintf for staticcheck QF1012"
+          git push
