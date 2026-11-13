@@ -1,1 +1,1 @@
-@file:/tmp/secrets-in-source/fasthog_test.go
+WORKSPACE_FILE:/workspace/.fasthog_test_restore.go
