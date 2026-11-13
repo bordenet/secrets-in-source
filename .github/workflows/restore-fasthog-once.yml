@@ -7,15 +7,17 @@ on:
   workflow_dispatch:
 permissions:
   contents: write
+  pull-requests: write
 jobs:
   restore:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Restore fasthog_test.go
+      - name: Restore fasthog_test.go onto branch and open PR
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          # Fix single-byte corruption introduced by a prior MCP upload
           python3 - <<'PY'
           from pathlib import Path
           p = Path('.cursor-restore/fasthog.b64.part00')
@@ -39,12 +41,22 @@ jobs:
           pathlib.Path('fasthog_test.go').write_bytes(raw)
           print('restored', len(raw), 'bytes')
           PY
+          BRANCH="cursor/restore-fasthog-61e8"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git checkout -B "$BRANCH"
           rm -rf .cursor-restore
           rm -f .github/workflows/restore-fasthog-once.yml
           rm -f .github/workflows/qf1012-restore.yml .github/workflows/restore-fasthog.yml || true
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A
           git status
           git commit -m "fix(lint): restore fasthog_test.go with fmt.Fprintf QF1012 fix"
-          git push
+          git push -u origin "$BRANCH" --force
+          if gh pr list --head "$BRANCH" --base main --json number --jq 'length' | grep -qx 0; then
+            gh pr create --base main --head "$BRANCH" \
+              --title "fix(lint): restore fasthog_test.go with fmt.Fprintf QF1012 fix" \
+              --body "Restores fasthog_test.go (45088 bytes) from staged gzip+base64 payload. Removes one-shot restore workflows/staging."
+          else
+            echo "PR already exists"
+            gh pr list --head "$BRANCH" --base main
+          fi
