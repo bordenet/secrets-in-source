@@ -1,1 +1,1 @@
-PLACEHOLDER_LOAD_FROM_FILE
+$file:/tmp/GOOD_fasthog_test.go
