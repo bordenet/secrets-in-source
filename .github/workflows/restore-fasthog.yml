@@ -1,6 +1,5 @@
 name: restore-fasthog
 on:
-  workflow_dispatch:
   push:
     paths:
       - '.cursor-restore/fasthog.b64'
@@ -11,28 +10,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Restore via Contents API
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Restore fasthog_test.go
         run: |
-          set -euo pipefail
-          base64 -d .cursor-restore/fasthog.b64 | gunzip > /tmp/fasthog_test.go
-          test "$(wc -c < /tmp/fasthog_test.go)" -eq 45088
-          head -c 12 /tmp/fasthog_test.go | grep -qx 'package main'
-          CONTENT_B64=$(base64 -w0 /tmp/fasthog_test.go)
-          SHA=$(curl -sS -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/${{ github.repository }}/contents/fasthog_test.go?ref=${{ github.ref_name }}" | jq -r .sha)
-          echo "current sha=$SHA"
-          curl -sS -X PUT \
-            -H "Authorization: Bearer $GH_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/${{ github.repository }}/contents/fasthog_test.go" \
-            -d "$(jq -n --arg msg "fix(lint): restore fasthog_test.go and fix staticcheck QF1012" --arg content "$CONTENT_B64" --arg sha "$SHA" --arg branch "${{ github.ref_name }}" '{message:$msg, content:$content, sha:$sha, branch:$branch}')" \
-            | tee /tmp/put.json
-          jq -e .commit.sha /tmp/put.json
-          # cleanup staging files
-          curl -sS -X DELETE \
-            -H "Authorization: Bearer $GH_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/${{ github.repository }}/contents/.cursor-restore/fasthog.b64" \
-            -d "$(jq -n --arg msg "chore: remove fasthog restore staging payload" --arg sha "$(curl -sS -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/${{ github.repository }}/contents/.cursor-restore/fasthog.b64?ref=${{ github.ref_name }}" | jq -r .sha)" --arg branch "${{ github.ref_name }}" '{message:$msg, sha:$sha, branch:$branch}')" || true
+          set -euxo pipefail
+          base64 -d < .cursor-restore/fasthog.b64 | gunzip > fasthog_test.go
+          wc -c fasthog_test.go
+          test "$(wc -c < fasthog_test.go)" -eq 45088
+          head -c 12 fasthog_test.go | tee /tmp/head.txt
+          grep -qx 'package main' /tmp/head.txt
+          grep -F 'fmt.Fprintf(&content, "# Comment line' fasthog_test.go
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add fasthog_test.go
+          git status
+          git commit -m "fix(lint): restore fasthog_test.go and fix staticcheck QF1012"
+          git push
