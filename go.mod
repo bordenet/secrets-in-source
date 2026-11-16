@@ -1,6 +1,6 @@
 module github.com/bordenet/secrets-in-source
 
-go 1.24.2
+go 1.25
 
 require (
 	github.com/charmbracelet/bubbles v0.21.0
@@ -28,7 +28,7 @@ require (
 	github.com/muesli/cancelreader v0.2.2 // indirect
 	github.com/muesli/termenv v0.16.0 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
-	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
+	github.com/xo/terminfo v1.3.1 // indirect
 	golang.org/x/sys v0.41.0 // indirect
 	golang.org/x/text v0.34.0 // indirect
 )
